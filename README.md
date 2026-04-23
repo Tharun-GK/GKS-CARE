@@ -34,7 +34,7 @@ So I wanted to build a system that can track patient vitals continuously and giv
 * Risk detection based on vitals
 * Explanation for each alert
 * Different patient scenarios (stable, moderate, critical)
-
+- Flask API for real-time data streaming
 ---
 
 ## Tech Used

@@ -6,7 +6,8 @@
 
 ## Overview
 
-This project is about building a system that can monitor patient health continuously and detect if their condition is getting worse. Instead of checking patients only at intervals, this system simulates real-time monitoring and gives alerts based on the patient’s vitals.
+GKS-CARE is an AI-based patient monitoring system that simulates real-time hospital vital tracking.
+It continuously reads patient data, analyzes risk level, and displays alerts through a live dashboard.
 
 ---
 
@@ -30,19 +31,24 @@ So I wanted to build a system that can track patient vitals continuously and giv
 
 ## Features
 
-* Simulated real-time data streaming
-* Risk detection based on vitals
-* Explanation for each alert
-* Different patient scenarios (stable, moderate, critical)
-- Flask API for real-time data streaming
+* Real-time patient vital monitoring
+* Live dashboard interface
+* Auto-refreshing data every few seconds
+* Risk prediction (Low / Medium / High)
+* Alert reasons shown instantly
+* Simulated stable / moderate / critical patients
+
 ---
 
-## Tech Used
+## Tech Stack
 
 * Python
+* Flask
+* HTML
+* CSS
+* JavaScript
 * Pandas
 
-(More features like Flask and UI will be added later)
 
 ---
 
@@ -51,34 +57,36 @@ So I wanted to build a system that can track patient vitals continuously and giv
 GKS-CARE/
 │── app.py
 │── risk_logic.py
-│
+│── README.md
+
 ├── data/
 │   ├── stable.csv
 │   ├── moderate.csv
 │   └── critical.csv
 
+├── templates/
+│   └── dashboard.html
+
+├── static/
+│   ├── style.css
+│   └── script.js
+
+
 ---
 
-## How to run
+## How to Run
 
-Clone the repo:
-
-```id="t4f3r1"
+```bash
 git clone https://github.com/Tharun-GK/GKS-CARE.git
 cd GKS-CARE
-```
-
-Install dependencies:
-
-```id="2n7jkl"
-pip install pandas
-```
-
-Run the project:
-
-```id="h3z9xp"
+pip install flask pandas
 python app.py
 ```
+
+Then open:
+
+http://127.0.0.1:5000
+
 
 ---
 
@@ -101,6 +109,10 @@ It updates every few seconds to simulate real-time monitoring.
 * Improve prediction logic
 
 ---
+## Dashboard Preview
+
+<img width="1802" height="854" alt="image" src="https://github.com/user-attachments/assets/5f98bddf-ef02-4c95-8069-48321b911f04" />
+
 
 ## Note
 

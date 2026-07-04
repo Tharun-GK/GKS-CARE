@@ -1,28 +1,259 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>GKS-CARE Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css"><center>
-    <h1> Code Phantom Presents</h1>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
 </head>
+
 <body>
 
 <div class="container">
+
+    <!-- Header -->
+
+    <h3 class="company">Code Phantom Presents</h3>
+
     <h1>GKS-CARE</h1>
-    <p>AI Patient Monitoring Dashboard</p>
 
-    <div class="card-grid">
-        <div class="card">Heart Rate: <span id="hr">--</span></div>
-        <div class="card">SpO₂: <span id="spo2">--</span></div>
-        <div class="card">Temp: <span id="temp">--</span></div>
-        <div class="card">Risk: <span id="risk">--</span></div>
+    <p class="subtitle">
+        AI Critical Patient Monitoring Dashboard
+    </p>
+
+
+    <!-- Top Status -->
+
+    <div class="top-status">
+
+        <div class="system-online">
+            🟢 AI SYSTEM ONLINE
+        </div>
+
+        <div class="clock" id="clock">
+            --
+        </div>
+
     </div>
 
-    <div class="alert-box">
-        Reason: <span id="reason">--</span>
+
+    <!-- Patient Information -->
+
+    <div class="card patient-card">
+
+        <h2>Patient Information</h2>
+
+        <div class="patient-grid">
+
+            <div>
+
+                <span>ID</span>
+
+                <h3 id="patient_id">--</h3>
+
+            </div>
+
+            <div>
+
+                <span>Age</span>
+
+                <h3 id="age">--</h3>
+
+            </div>
+
+            <div>
+
+                <span>Gender</span>
+
+                <h3 id="gender">--</h3>
+
+            </div>
+
+            <div>
+
+                <span>Last Update</span>
+
+                <h3 id="time">--</h3>
+
+            </div>
+
+        </div>
+
     </div>
+
+
+    <!-- Vital Cards -->
+
+    <div class="grid">
+
+        <div class="card">
+
+            <h2>❤️ Heart Rate</h2>
+
+            <h1 id="hr">--</h1>
+
+            <span>BPM</span>
+
+        </div>
+
+        <div class="card">
+
+            <h2>🩸 Blood Pressure</h2>
+
+            <h1 id="bp">--</h1>
+
+            <span>mmHg</span>
+
+        </div>
+
+        <div class="card">
+
+            <h2>🫁 SpO₂</h2>
+
+            <h1 id="spo2">--</h1>
+
+            <span>%</span>
+
+        </div>
+
+        <div class="card">
+
+            <h2>🌡 Temperature</h2>
+
+            <h1 id="temp">--</h1>
+
+            <span>°F</span>
+
+        </div>
+
+    </div>
+
+
+    <!-- NEW AI Summary -->
+
+    <div class="grid">
+
+        <!-- Health Score -->
+
+        <div class="card">
+
+            <h2>💚 Overall Health Score</h2>
+
+            <h1 id="health_score">--%</h1>
+
+            <div class="progress">
+
+                <div id="health_bar" class="progress-fill"></div>
+
+            </div>
+
+        </div>
+
+
+        <!-- Patient Status -->
+
+        <div class="card">
+
+            <h2>🏥 Patient Status</h2>
+
+            <h1 id="status">--</h1>
+
+        </div>
+
+    </div>
+
+
+    <!-- AI Confidence -->
+
+    <div class="card">
+
+        <h2>🤖 AI Prediction Confidence</h2>
+
+        <h1 id="confidence">--%</h1>
+
+        <div class="progress">
+
+            <div id="confidence_bar" class="progress-fill"></div>
+
+        </div>
+
+    </div>
+
+
+    <!-- AI Risk -->
+
+    <div class="card risk-card">
+
+        <h2>AI Risk Analysis</h2>
+
+        <h1 id="risk">--</h1>
+
+        <p id="reason"></p>
+
+    </div>
+
+
+    <!-- Recommendation -->
+
+    <div class="card recommendation">
+
+        <h2>AI Recommendation</h2>
+
+        <p id="recommendation"></p>
+
+    </div>
+
+
+    <!-- Trend Charts -->
+
+    <div class="grid">
+
+        <div class="card">
+
+            <h2>📈 Heart Rate Trend</h2>
+
+            <canvas id="hrChart"></canvas>
+
+        </div>
+
+        <div class="card">
+
+            <h2>🫁 SpO₂ Trend</h2>
+
+            <canvas id="spo2Chart"></canvas>
+
+        </div>
+
+    </div>
+
+    <div class="card">
+
+        <h2>🌡 Temperature Trend</h2>
+
+        <canvas id="tempChart"></canvas>
+
+    </div>
+
+
+    <!-- Footer -->
+
+    <footer>
+
+        GKS-CARE • AI Patient Monitoring System • Version 1.0
+
+    </footer>
+
 </div>
 
-<script src="/static/script.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
 </body>
 </html>

@@ -1,38 +1,285 @@
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #0f172a;
-    color: white;
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Segoe UI,sans-serif;
 }
 
-.container {
-    width: 80%;
-    margin: auto;
-    text-align: center;
-    padding-top: 40px;
+body{
+
+    background:#0f172a;
+    color:white;
+
 }
 
-h1 {
-    color: #38bdf8;
+.container{
+
+    width:85%;
+    margin:auto;
+    padding:20px;
+
 }
 
-.card-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
-    margin: 30px 0;
+/* ---------------- HEADER ---------------- */
+
+.company{
+
+    text-align:center;
+    color:#38bdf8;
+    margin-top:10px;
+
 }
 
-.card {
-    background: #1e293b;
-    padding: 25px;
-    border-radius: 12px;
-    font-size: 22px;
+h1{
+
+    text-align:center;
+    color:#38bdf8;
+    margin-top:10px;
+    font-size:55px;
+
 }
 
-.alert-box {
-    background: #334155;
-    padding: 20px;
-    border-radius: 12px;
-    font-size: 20px;
+.subtitle{
+
+    text-align:center;
+    margin-top:10px;
+    margin-bottom:25px;
+
+}
+
+/* ---------------- TOP STATUS ---------------- */
+
+.top-status{
+
+    display:flex;
+    justify-content:center;
+    gap:30px;
+    margin-bottom:25px;
+
+}
+
+.system-online{
+
+    background:#14532d;
+    color:#22c55e;
+    padding:10px 18px;
+    border-radius:25px;
+    font-weight:bold;
+
+}
+
+.clock{
+
+    background:#1e3a5f;
+    color:#38bdf8;
+    padding:10px 18px;
+    border-radius:25px;
+
+}
+
+/* ---------------- CARD ---------------- */
+
+.card{
+
+    background:#1e293b;
+    border-radius:18px;
+    padding:20px;
+    margin-bottom:20px;
+
+    box-shadow:0 10px 20px rgba(0,0,0,.25);
+
+    transition:.3s;
+
+}
+
+.card:hover{
+
+    transform:translateY(-5px);
+
+}
+
+/* ---------------- PATIENT INFO ---------------- */
+
+.patient-grid{
+
+    display:grid;
+
+    grid-template-columns:repeat(4,1fr);
+
+    text-align:center;
+
+    margin-top:20px;
+
+}
+
+.patient-grid span{
+
+    color:#94a3b8;
+
+}
+
+.patient-grid h3{
+
+    margin-top:8px;
+    font-size:30px;
+
+}
+
+/* ---------------- GRID ---------------- */
+
+.grid{
+
+    display:grid;
+
+    grid-template-columns:repeat(2,1fr);
+
+    gap:20px;
+
+}
+
+/* ---------------- CARD HEADINGS ---------------- */
+
+.card h2{
+
+    margin-bottom:20px;
+
+}
+
+.card h1{
+
+    font-size:60px;
+    color:#38bdf8;
+
+}
+
+.card span{
+
+    color:#94a3b8;
+
+}
+
+/* ---------------- PROGRESS ---------------- */
+
+.progress{
+
+    width:100%;
+    height:14px;
+
+    background:#334155;
+
+    border-radius:10px;
+
+    margin-top:20px;
+
+    overflow:hidden;
+
+}
+
+.progress-fill{
+
+    height:100%;
+
+    width:0%;
+
+    background:#22c55e;
+
+    transition:1s;
+
+}
+
+/* ---------------- RISK ---------------- */
+
+.risk-card{
+
+    text-align:center;
+
+}
+
+#risk{
+
+    font-size:70px;
+    margin:20px 0;
+
+}
+
+#reason{
+
+    color:#e2e8f0;
+    line-height:28px;
+
+}
+
+/* ---------------- STATUS ---------------- */
+
+#status{
+
+    font-size:42px;
+
+}
+
+/* ---------------- RECOMMENDATION ---------------- */
+
+.recommendation{
+
+    text-align:center;
+
+}
+
+#recommendation{
+
+    color:#38bdf8;
+    font-size:28px;
+    margin-top:20px;
+
+}
+
+/* ---------------- CHARTS ---------------- */
+
+canvas{
+
+    width:100% !important;
+    height:280px !important;
+
+}
+
+/* ---------------- FOOTER ---------------- */
+
+footer{
+
+    text-align:center;
+    color:#64748b;
+
+    margin:30px;
+
+}
+
+/* ---------------- MOBILE ---------------- */
+
+@media(max-width:900px){
+
+.grid{
+
+    grid-template-columns:1fr;
+
+}
+
+.patient-grid{
+
+    grid-template-columns:repeat(2,1fr);
+    row-gap:20px;
+
+}
+
+h1{
+
+    font-size:38px;
+
+}
+
+.card h1{
+
+    font-size:42px;
+
+}
+
 }

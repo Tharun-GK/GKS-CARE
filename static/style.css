@@ -435,3 +435,80 @@ font-size:34px;
 }
 
 }
+
+
+/* =====================================
+   Emergency Alert Banner
+===================================== */
+
+.alert-banner{
+
+    display:none;
+
+    background:linear-gradient(
+        90deg,
+        #991b1b,
+        #dc2626
+    );
+
+    color:white;
+
+    border-radius:18px;
+
+    padding:20px;
+
+    margin-bottom:25px;
+
+    display:flex;
+
+    align-items:center;
+
+    gap:18px;
+
+    animation:alertFlash 1s infinite;
+
+    box-shadow:0 0 25px rgba(255,0,0,.35);
+
+}
+
+.alert-icon{
+
+    font-size:42px;
+
+}
+
+.alert-text h2{
+
+    margin-bottom:8px;
+
+    font-size:24px;
+
+}
+
+.alert-text p{
+
+    color:#ffe5e5;
+
+}
+
+@keyframes alertFlash{
+
+0%{
+
+opacity:1;
+
+}
+
+50%{
+
+opacity:.55;
+
+}
+
+100%{
+
+opacity:1;
+
+}
+
+}

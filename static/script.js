@@ -6,6 +6,7 @@ let hrHistory = [];
 let spo2History = [];
 let tempHistory = [];
 
+let monitoringSeconds = 0;
 const labels = new Array(15).fill("");
 
 // =====================================
@@ -190,20 +191,32 @@ async function updateDashboard() {
 
         // ---------------- Risk Color ----------------
 
-        const risk = document.getElementById("risk");
+        const risk=document.getElementById("risk");
 
-        if (data.risk === "Low") {
+risk.innerText=data.risk;
 
-            risk.style.color = "#00ff88";
+const banner=document.getElementById("alertBanner");
 
-        } else if (data.risk === "Medium") {
+if(data.risk=="Low"){
 
-            risk.style.color = "#ffd000";
+    risk.style.color="#00ff88";
+    banner.style.display="none";
 
-        } else {
+}
 
-            risk.style.color = "#ff3b3b";
-        }
+else if(data.risk=="Medium"){
+
+    risk.style.color="#ffd000";
+    banner.style.display="none";
+
+}
+
+else{
+
+    risk.style.color="#ff3b3b";
+    banner.style.display="flex";
+
+}
 
         // ---------------- Status Color ----------------
 
@@ -236,6 +249,35 @@ async function updateDashboard() {
         spo2Chart.update();
         tempChart.update();
 
+        // =======================================
+// Dashboard Statistics
+// =======================================
+
+if (hrHistory.length > 0) {
+
+    document.getElementById("max_hr").innerText =
+        Math.max(...hrHistory);
+
+}
+
+if (spo2History.length > 0) {
+
+    document.getElementById("min_spo2").innerText =
+        Math.min(...spo2History) + "%";
+
+}
+
+if (tempHistory.length > 0) {
+
+    const avg =
+        tempHistory.reduce((a,b)=>a+b,0) /
+        tempHistory.length;
+
+    document.getElementById("avg_temp").innerText =
+        avg.toFixed(1) + "°F";
+
+}
+
     }
 
     catch (error) {
@@ -253,3 +295,22 @@ async function updateDashboard() {
 updateDashboard();
 
 setInterval(updateDashboard, 2000);
+
+// =======================================
+// Monitoring Timer
+// =======================================
+
+setInterval(() => {
+
+    monitoringSeconds++;
+
+    const hrs = Math.floor(monitoringSeconds / 3600);
+    const mins = Math.floor((monitoringSeconds % 3600) / 60);
+    const secs = monitoringSeconds % 60;
+
+    document.getElementById("monitoring_time").innerText =
+        String(hrs).padStart(2,'0') + ":" +
+        String(mins).padStart(2,'0') + ":" +
+        String(secs).padStart(2,'0');
+
+},1000);

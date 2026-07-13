@@ -8,7 +8,8 @@
 
     <title>GKS-CARE Dashboard</title>
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}">
 
 </head>
 
@@ -16,18 +17,19 @@
 
 <div class="container">
 
+    <!-- ================================= -->
     <!-- Header -->
+    <!-- ================================= -->
 
-    <h3 class="company">Code Phantom Presents</h3>
+    <h3 class="company">
+        Code Phantom Presents
+    </h3>
 
     <h1>GKS-CARE</h1>
 
     <p class="subtitle">
         AI Critical Patient Monitoring Dashboard
     </p>
-
-
-    <!-- Top Status -->
 
     <div class="top-status">
 
@@ -42,7 +44,24 @@
     </div>
 
 
+    <!-- ================================= -->
+    <!-- Emergency Banner -->
+    <!-- ================================= -->
+
+    <div id="emergencyBanner" class="emergency-banner">
+
+        🚨 CRITICAL PATIENT ALERT
+
+        <p>
+            Immediate medical attention required.
+        </p>
+
+    </div>
+
+
+    <!-- ================================= -->
     <!-- Patient Information -->
+    <!-- ================================= -->
 
     <div class="card patient-card">
 
@@ -51,35 +70,23 @@
         <div class="patient-grid">
 
             <div>
-
                 <span>ID</span>
-
                 <h3 id="patient_id">--</h3>
-
             </div>
 
             <div>
-
                 <span>Age</span>
-
                 <h3 id="age">--</h3>
-
             </div>
 
             <div>
-
                 <span>Gender</span>
-
                 <h3 id="gender">--</h3>
-
             </div>
 
             <div>
-
                 <span>Last Update</span>
-
                 <h3 id="time">--</h3>
-
             </div>
 
         </div>
@@ -87,7 +94,9 @@
     </div>
 
 
-    <!-- Vital Cards -->
+    <!-- ================================= -->
+    <!-- Vital Signs -->
+    <!-- ================================= -->
 
     <div class="grid">
 
@@ -134,11 +143,11 @@
     </div>
 
 
-    <!-- NEW AI Summary -->
+    <!-- ================================= -->
+    <!-- AI Summary -->
+    <!-- ================================= -->
 
     <div class="grid">
-
-        <!-- Health Score -->
 
         <div class="card">
 
@@ -148,14 +157,14 @@
 
             <div class="progress">
 
-                <div id="health_bar" class="progress-fill"></div>
+                <div id="health_bar"
+                     class="progress-fill">
+
+                </div>
 
             </div>
 
         </div>
-
-
-        <!-- Patient Status -->
 
         <div class="card">
 
@@ -178,14 +187,19 @@
 
         <div class="progress">
 
-            <div id="confidence_bar" class="progress-fill"></div>
+            <div id="confidence_bar"
+                 class="progress-fill">
+
+            </div>
 
         </div>
 
     </div>
 
 
-    <!-- AI Risk -->
+    <!-- ================================= -->
+    <!-- Risk -->
+    <!-- ================================= -->
 
     <div class="card risk-card">
 
@@ -193,23 +207,90 @@
 
         <h1 id="risk">--</h1>
 
-        <p id="reason"></p>
+        <h3>Detected Reasons</h3>
+
+        <p id="reason">
+
+        </p>
 
     </div>
 
 
+    <!-- ================================= -->
     <!-- Recommendation -->
+    <!-- ================================= -->
 
     <div class="card recommendation">
 
         <h2>AI Recommendation</h2>
 
-        <p id="recommendation"></p>
+        <p id="recommendation">
+
+        </p>
 
     </div>
 
 
+    <!-- ================================= -->
+    <!-- Statistics -->
+    <!-- ================================= -->
+
+    <div class="grid stats-grid">
+
+        <div class="card stat-card">
+
+            <h2>📈 Highest HR</h2>
+
+            <h1 id="max_hr">
+
+                --
+
+            </h1>
+
+        </div>
+
+        <div class="card stat-card">
+
+            <h2>🫁 Lowest SpO₂</h2>
+
+            <h1 id="min_spo2">
+
+                --
+
+            </h1>
+
+        </div>
+
+        <div class="card stat-card">
+
+            <h2>🌡 Avg Temp</h2>
+
+            <h1 id="avg_temp">
+
+                --
+
+            </h1>
+
+        </div>
+
+        <div class="card stat-card">
+
+            <h2>⏱ Monitoring</h2>
+
+            <h1 id="monitor_time">
+
+                00:00
+
+            </h1>
+
+        </div>
+
+    </div>
+
+
+    <!-- ================================= -->
     <!-- Trend Charts -->
+    <!-- ================================= -->
 
     <div class="grid">
 
@@ -231,6 +312,7 @@
 
     </div>
 
+
     <div class="card">
 
         <h2>🌡 Temperature Trend</h2>
@@ -240,20 +322,38 @@
     </div>
 
 
+    <!-- ================================= -->
+    <!-- Activity Log -->
+    <!-- ================================= -->
+
+    <div class="card">
+
+        <h2>📜 AI Activity Log</h2>
+
+        <div id="activityLog"
+             class="activity-log">
+
+        </div>
+
+    </div>
+
+
+    <!-- ================================= -->
     <!-- Footer -->
+    <!-- ================================= -->
 
     <footer>
 
-        GKS-CARE • AI Patient Monitoring System • Version 1.0
+        GKS-CARE • AI Critical Patient Monitoring System • Version 1.1
 
     </footer>
 
 </div>
-
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script src="{{ url_for('static', filename='script.js') }}"></script>
 
 </body>
+
 </html>

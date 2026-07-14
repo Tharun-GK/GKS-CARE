@@ -252,6 +252,68 @@
 
     </div>
 
+    <!-- ===========================
+Emergency Response Panel
+=========================== -->
+
+<div class="card emergency-panel">
+
+    <h2>🚑 Emergency Response</h2>
+
+    <div class="emergency-grid">
+
+        <div class="emergency-box">
+
+            <span>Ambulance</span>
+
+            <h3 id="ambulanceStatus">Standby</h3>
+
+        </div>
+
+        <div class="emergency-box">
+
+            <span>Assigned Doctor</span>
+
+            <h3 id="doctorName">Dr. Rajesh Kumar</h3>
+
+        </div>
+
+        <div class="emergency-box">
+
+            <span>Department</span>
+
+            <h3 id="department">Cardiology</h3>
+
+        </div>
+
+        <div class="emergency-box">
+
+            <span>Emergency Contact</span>
+
+            <h3 id="contactNumber">+91 9876543210</h3>
+
+        </div>
+
+        <div class="emergency-box">
+
+            <span>Hospital</span>
+
+            <h3 id="hospitalName">Apollo Hospital</h3>
+
+        </div>
+
+        <div class="emergency-box">
+
+            <span>Estimated Arrival</span>
+
+            <h3 id="eta">--</h3>
+
+        </div>
+
+    </div>
+
+</div>
+
 
     <!-- ================================= -->
     <!-- Statistics -->
@@ -344,20 +406,61 @@
     </div>
 
 
-    <!-- ================================= -->
-    <!-- Activity Log -->
-    <!-- ================================= -->
+    <!-- ===========================
+Patient Medical History
+=========================== -->
 
-    <div class="card">
+<div class="card">
 
-        <h2>📜 AI Activity Log</h2>
+    <h2>🩺 Patient Medical History</h2>
 
-        <div id="activityLog"
-             class="activity-log">
+    <div class="history-grid">
 
+        <div class="history-item">
+            <span>Blood Group</span>
+            <h3 id="blood_group">O+</h3>
+        </div>
+
+        <div class="history-item">
+            <span>Allergies</span>
+            <h3 id="allergies">Penicillin</h3>
+        </div>
+
+        <div class="history-item">
+            <span>Diabetes</span>
+            <h3 id="diabetes">Yes</h3>
+        </div>
+
+        <div class="history-item">
+            <span>Hypertension</span>
+            <h3 id="hypertension">Yes</h3>
+        </div>
+
+        <div class="history-item">
+            <span>Previous Surgery</span>
+            <h3 id="surgery">Angioplasty (2024)</h3>
+        </div>
+
+        <div class="history-item">
+            <span>Current Medication</span>
+            <h3 id="medicine">Aspirin, Metformin</h3>
         </div>
 
     </div>
+
+</div>
+
+    <!-- AI Activity Log -->
+
+<div class="card">
+
+    <h2>📜 AI Activity Log</h2>
+
+    <div id="activityLog" class="activity-log">
+
+    </div>
+
+</div>
 
 
     <!-- ================================= -->

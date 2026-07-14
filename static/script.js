@@ -5,6 +5,7 @@
 let hrHistory = [];
 let spo2History = [];
 let tempHistory = [];
+let activityLogs = [];
 
 let monitoringSeconds = 0;
 const labels = new Array(15).fill("");
@@ -145,6 +146,23 @@ async function updateDashboard() {
         const response = await fetch("/patient");
         const data = await response.json();
 
+        // Generate AI Logs
+
+if(data.risk === "High")
+    addLog("🚨 High Risk Detected");
+
+if(data.hr > 110)
+    addLog(`❤️ Heart Rate Increased to ${data.hr} BPM`);
+
+if(data.spo2 < 92)
+    addLog(`🫁 Oxygen dropped to ${data.spo2}%`);
+
+if(data.status === "Critical Condition")
+    addLog("🏥 Patient Status → Critical");
+
+if(data.recommendation)
+    addLog("🤖 AI Recommendation Updated");
+
         // ---------------- Patient Info ----------------
 
         document.getElementById("patient_id").innerText = data.patient_id;
@@ -159,6 +177,7 @@ async function updateDashboard() {
         document.getElementById("spo2").innerText = data.spo2;
         document.getElementById("temp").innerText = data.temp;
 
+        
         // ---------------- AI Summary ----------------
 
         document.getElementById("health_score").innerText =
@@ -218,6 +237,42 @@ else{
 
 }
 
+// ===============================
+// AI Activity Log
+// ===============================
+
+const logContainer = document.getElementById("activity_log");
+
+if (logContainer) {
+
+    const time = new Date().toLocaleTimeString();
+
+    let message = "";
+
+    if (data.risk === "High") {
+        message = "🚨 High Risk Detected";
+    }
+    else if (data.risk === "Medium") {
+        message = "⚠️ Patient Under Observation";
+    }
+    else {
+        message = "✅ Patient Stable";
+    }
+
+    const item = document.createElement("div");
+    item.className = "log-item";
+    item.innerHTML = `
+        <span class="log-time">${time}</span>
+        <span>${message}</span>
+    `;
+
+    logContainer.prepend(item);
+
+    while (logContainer.children.length > 20) {
+        logContainer.removeChild(logContainer.lastChild);
+    }
+}
+
         // ---------------- Status Color ----------------
 
         const status = document.getElementById("status");
@@ -249,6 +304,54 @@ else{
         spo2Chart.update();
         tempChart.update();
 
+        // ===============================
+// Statistics Cards
+// ===============================
+
+document.getElementById("highest_hr").innerText =
+    Math.max(...hrHistory);
+
+document.getElementById("lowest_spo2").innerText =
+    Math.min(...spo2History) + "%";
+
+const avgTemp =
+    tempHistory.reduce((a,b)=>a+b,0) /
+    tempHistory.length;
+
+document.getElementById("avg_temp").innerText =
+    avgTemp.toFixed(1) + "°F";
+
+
+        function addLog(message){
+
+    const now = new Date();
+
+    const time = now.toLocaleTimeString();
+
+    activityLogs.unshift({
+        time,
+        message
+    });
+
+    if(activityLogs.length > 20)
+        activityLogs.pop();
+
+    const logDiv = document.getElementById("activityLog");
+
+    logDiv.innerHTML = "";
+
+    activityLogs.forEach(log=>{
+
+        logDiv.innerHTML += `
+        <div class="log-item">
+            <div class="log-time">${log.time}</div>
+            <div class="log-text">${log.message}</div>
+        </div>
+        `;
+
+    });
+
+}
         // =======================================
 // Dashboard Statistics
 // =======================================

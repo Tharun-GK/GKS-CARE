@@ -8,6 +8,9 @@ let tempHistory = [];
 let monitoringSeconds = 0;
 let updateInProgress = false;
 let lastLoggedRisk = null;
+let selectedPatientId = "P001";
+let selectionVersion = 0;
+let patientsLoaded = false;
 
 function createChart(canvasId, history, color) {
     const canvas = document.getElementById(canvasId);
@@ -192,21 +195,155 @@ function updateStatistics() {
     }
 }
 
-async function updateDashboard() {
-    if (updateInProgress) {
+function clearSelectedPatientData() {
+    hrHistory.length = 0;
+    spo2History.length = 0;
+    tempHistory.length = 0;
+    lastLoggedRisk = null;
+
+    [
+        "patient_id",
+        "age",
+        "gender",
+        "time",
+        "hr",
+        "bp",
+        "spo2",
+        "temp",
+        "status",
+        "risk",
+        "reason",
+        "recommendation",
+        "health_score",
+        "max_hr",
+        "min_spo2",
+        "avg_temp",
+        "blood_group",
+        "allergies",
+        "diabetes",
+        "hypertension",
+        "surgery",
+        "medicine"
+    ].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.innerText = "--";
+            element.style.color = "";
+        }
+    });
+
+    const healthBar = document.getElementById("health_bar");
+    if (healthBar) {
+        healthBar.style.width = "0";
+    }
+
+    const banner = document.getElementById("alertBanner");
+    if (banner) {
+        banner.style.display = "none";
+    }
+
+    const activityLog = document.getElementById("activityLog");
+    if (activityLog) {
+        while (activityLog.children.length > 0) {
+            activityLog.removeChild(activityLog.lastChild);
+        }
+    }
+
+    [
+        [hrChart, hrHistory],
+        [spo2Chart, spo2History],
+        [tempChart, tempHistory]
+    ].forEach(([chart, history]) => {
+        if (chart) {
+            chart.data.datasets[0].data = history;
+            chart.update();
+        }
+    });
+}
+
+function populatePatientSelector(patients) {
+    const selector = document.getElementById("patientSelector");
+    if (!selector) {
         return;
     }
 
+    while (selector.children.length > 0) {
+        selector.removeChild(selector.lastChild);
+    }
+
+    patients.forEach(patient => {
+        const option = document.createElement("option");
+        option.value = patient.patient_id;
+        option.innerText = `${patient.patient_id} · ${patient.gender}, age ${patient.age} · Synthetic`;
+        selector.append(option);
+    });
+
+    if (!patients.some(patient => patient.patient_id === selectedPatientId)) {
+        selectedPatientId = patients[0].patient_id;
+    }
+
+    selector.value = selectedPatientId;
+    selector.disabled = false;
+    selector.addEventListener("change", () => {
+        if (!selector.value || selector.value === selectedPatientId) {
+            return;
+        }
+
+        selectedPatientId = selector.value;
+        selectionVersion++;
+        clearSelectedPatientData();
+        updateDashboard();
+    });
+}
+
+async function loadPatients() {
+    const response = await fetch("/patients");
+    if (!response.ok) {
+        throw new Error("Patient list endpoint returned HTTP " + response.status);
+    }
+
+    const data = await response.json();
+    if (!data || !Array.isArray(data.patients) || data.patients.length === 0) {
+        throw new Error("Patient list endpoint returned no patients.");
+    }
+
+    const validPatients = data.patients.every(patient =>
+        patient
+        && typeof patient.patient_id === "string"
+        && Number.isInteger(patient.age)
+        && typeof patient.gender === "string"
+        && patient.data_source === "synthetic_demo"
+    );
+    if (!validPatients) {
+        throw new Error("Patient list endpoint returned invalid patient data.");
+    }
+
+    populatePatientSelector(data.patients);
+    patientsLoaded = true;
+}
+
+async function updateDashboard() {
+    if (updateInProgress || !patientsLoaded) {
+        return;
+    }
+
+    const requestedPatientId = selectedPatientId;
+    const requestedSelectionVersion = selectionVersion;
     updateInProgress = true;
 
     try {
-        const response = await fetch("/patient");
+        const response = await fetch(
+            "/patient?patient_id=" + encodeURIComponent(requestedPatientId)
+        );
         if (!response.ok) {
             throw new Error("Patient endpoint returned HTTP " + response.status);
         }
 
         const data = await response.json();
-        if (!validatePatientData(data)) {
+        if (requestedSelectionVersion !== selectionVersion) {
+            return;
+        }
+        if (!validatePatientData(data) || data.patient_id !== requestedPatientId) {
             throw new Error("Patient endpoint returned an invalid response.");
         }
 
@@ -289,9 +426,22 @@ async function updateDashboard() {
     }
 }
 
+async function initializeDashboard() {
+    try {
+        await loadPatients();
+        updateDashboard();
+    } catch (error) {
+        console.error("Patient list load failed:", error);
+        showDashboardError(
+            "Synthetic patient choices are unavailable. Retrying automatically."
+        );
+        setTimeout(initializeDashboard, REFRESH_INTERVAL_MS);
+    }
+}
+
 updateClock();
 setInterval(updateClock, 1000);
-updateDashboard();
+initializeDashboard();
 
 setInterval(() => {
     monitoringSeconds++;

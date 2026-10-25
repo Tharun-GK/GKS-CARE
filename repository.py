@@ -9,13 +9,46 @@ from database import transaction
 PATIENT_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 TEMPERATURE_UNITS = {"F", "C"}
 
-DEMO_HISTORY = (
-    ("blood_group", "O+"),
-    ("allergies", "Penicillin"),
-    ("diabetes", "Yes"),
-    ("hypertension", "Yes"),
-    ("surgery", "Angioplasty (2024)"),
-    ("medicine", "Aspirin, Metformin"),
+DEMO_PATIENTS = (
+    {
+        "patient_id": "P001",
+        "age": 45,
+        "gender": "Male",
+        "history": (
+            ("blood_group", "O+"),
+            ("allergies", "Penicillin"),
+            ("diabetes", "Yes"),
+            ("hypertension", "Yes"),
+            ("surgery", "Angioplasty (2024)"),
+            ("medicine", "Aspirin, Metformin"),
+        ),
+    },
+    {
+        "patient_id": "P002",
+        "age": 37,
+        "gender": "Female",
+        "history": (
+            ("blood_group", "A+"),
+            ("allergies", "None recorded in demo"),
+            ("diabetes", "No"),
+            ("hypertension", "No"),
+            ("surgery", "None recorded in demo"),
+            ("medicine", "Demo medication record"),
+        ),
+    },
+    {
+        "patient_id": "P003",
+        "age": 62,
+        "gender": "Male",
+        "history": (
+            ("blood_group", "B+"),
+            ("allergies", "Latex (demo)"),
+            ("diabetes", "Yes"),
+            ("hypertension", "Yes"),
+            ("surgery", "None recorded in demo"),
+            ("medicine", "Demo medication record"),
+        ),
+    },
 )
 
 
@@ -112,33 +145,46 @@ def _insert_audit_event(connection, patient_id, event_type, occurred_at, details
 def seed_demo_patient(database_path):
     created_at = normalize_timestamp(datetime.now(timezone.utc))
     with transaction(database_path) as connection:
-        inserted = connection.execute(
-            """
-            INSERT OR IGNORE INTO patients
-                (patient_id, age, gender, data_source, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            ("P001", 45, "Male", "synthetic_demo", created_at),
-        ).rowcount
-
-        for record_type, value in DEMO_HISTORY:
-            connection.execute(
+        for patient in DEMO_PATIENTS:
+            inserted = connection.execute(
                 """
-                INSERT OR IGNORE INTO patient_history
-                    (patient_id, record_type, value, source, updated_at)
+                INSERT OR IGNORE INTO patients
+                    (patient_id, age, gender, data_source, created_at)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                ("P001", record_type, value, "synthetic_demo", created_at),
-            )
+                (
+                    patient["patient_id"],
+                    patient["age"],
+                    patient["gender"],
+                    "synthetic_demo",
+                    created_at,
+                ),
+            ).rowcount
 
-        if inserted:
-            _insert_audit_event(
-                connection,
-                "P001",
-                "synthetic_patient_seeded",
-                created_at,
-                {"source": "synthetic_demo"},
-            )
+            for record_type, value in patient["history"]:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO patient_history
+                        (patient_id, record_type, value, source, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        patient["patient_id"],
+                        record_type,
+                        value,
+                        "synthetic_demo",
+                        created_at,
+                    ),
+                )
+
+            if inserted:
+                _insert_audit_event(
+                    connection,
+                    patient["patient_id"],
+                    "synthetic_patient_seeded",
+                    created_at,
+                    {"source": "synthetic_demo"},
+                )
 
 
 def get_patient(database_path, patient_id):
@@ -153,6 +199,18 @@ def get_patient(database_path, patient_id):
             (patient_id,),
         ).fetchone()
     return dict(patient) if patient else None
+
+
+def get_patients(database_path):
+    with transaction(database_path) as connection:
+        patients = connection.execute(
+            """
+            SELECT patient_id, age, gender, data_source
+            FROM patients
+            ORDER BY patient_id
+            """
+        ).fetchall()
+    return [dict(patient) for patient in patients]
 
 
 def get_patient_history(database_path, patient_id):

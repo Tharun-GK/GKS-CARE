@@ -3,12 +3,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 from database import initialize_database
 from repository import (
     get_patient,
     get_patient_history,
+    get_patients,
     get_recent_observations,
     record_observation,
     seed_demo_patient,
@@ -100,7 +101,13 @@ def generate_bp(risk):
 
 def create_app(dataset_path=None, database_path=None):
     app = Flask(__name__)
-    resolved_dataset_path = Path(dataset_path) if dataset_path else DATA_DIRECTORY / "critical.csv"
+    default_dataset_paths = {
+        "P001": DATA_DIRECTORY / "critical.csv",
+        "P002": DATA_DIRECTORY / "moderate.csv",
+        "P003": DATA_DIRECTORY / "stable.csv",
+    }
+    if dataset_path:
+        default_dataset_paths["P001"] = Path(dataset_path)
     resolved_database_path = (
         Path(database_path)
         if database_path
@@ -110,25 +117,48 @@ def create_app(dataset_path=None, database_path=None):
     seed_demo_patient(resolved_database_path)
     app.config["DATABASE_PATH"] = str(resolved_database_path)
 
-    try:
-        patient_dataset = load_dataset(resolved_dataset_path)
-        dataset_error = None
-    except DatasetError as error:
-        app.logger.error("Patient simulation data is unavailable: %s", error)
-        patient_dataset = None
-        dataset_error = error
-
-    patient_state = {"index": 0, "previous_row": None}
+    patient_datasets = {}
+    patient_states = {}
+    for patient_id, path in default_dataset_paths.items():
+        try:
+            patient_datasets[patient_id] = {"dataset": load_dataset(path), "error": None}
+        except DatasetError as error:
+            app.logger.error(
+                "Patient simulation data for %s is unavailable: %s",
+                patient_id,
+                error,
+            )
+            patient_datasets[patient_id] = {"dataset": None, "error": error}
+        patient_states[patient_id] = {"index": 0, "previous_row": None}
 
     @app.route("/")
     def dashboard():
         return render_template("dashboard.html")
 
+    @app.route("/patients")
+    def patients():
+        return jsonify({"patients": get_patients(resolved_database_path)})
+
     @app.route("/patient")
     def patient():
-        if dataset_error is not None or patient_dataset is None:
+        patient_id = request.args.get("patient_id", "P001")
+        try:
+            patient = get_patient(resolved_database_path, patient_id)
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+        if patient is None:
+            return jsonify({"error": "Patient was not found."}), 404
+
+        patient_data = patient_datasets.get(patient_id)
+        if patient_data is None:
+            return jsonify({"error": "Patient simulation data is unavailable."}), 503
+
+        patient_dataset = patient_data["dataset"]
+        if patient_data["error"] is not None or patient_dataset is None:
             return jsonify({"error": "Patient simulation data is currently unavailable."}), 503
 
+        patient_state = patient_states[patient_id]
         if patient_state["index"] >= len(patient_dataset):
             patient_state["index"] = 0
             patient_state["previous_row"] = None
@@ -141,9 +171,7 @@ def create_app(dataset_path=None, database_path=None):
             "Medium": "Demo rules detected a changing pattern. Review the measurements with a qualified clinician.",
             "High": "Demo rules detected a concerning pattern. This is not a diagnosis; consult a qualified clinician.",
         }
-        patient_id = "P001"
         measured_at = datetime.now(timezone.utc)
-        patient = get_patient(resolved_database_path, patient_id)
         observation = record_observation(
             resolved_database_path,
             patient_id=patient_id,

@@ -43,6 +43,7 @@ class PatientApiTests(unittest.TestCase):
             "spo2Chart",
             "tempChart",
             "dashboardError",
+            "patientSelector",
         ):
             with self.subTest(element_id=element_id):
                 self.assertIn(f'id="{element_id}"', page)
@@ -91,6 +92,54 @@ class PatientApiTests(unittest.TestCase):
         self.assertEqual(data["observations"][0]["temperature_unit"], "F")
         self.assertEqual(len(data["medical_history"]), 6)
         self.assertNotIn("confidence", data)
+
+    def test_patient_list_returns_all_seeded_synthetic_profiles(self):
+        response = self.client.get("/patients")
+
+        self.assertEqual(response.status_code, 200)
+        patients = response.get_json()["patients"]
+        self.assertEqual(
+            [patient["patient_id"] for patient in patients],
+            ["P001", "P002", "P003"],
+        )
+        self.assertTrue(
+            all(patient["data_source"] == "synthetic_demo" for patient in patients)
+        )
+
+    def test_patient_selection_isolated_for_datasets_history_and_observations(self):
+        p002 = self.client.get("/patient?patient_id=P002").get_json()
+        p001 = self.client.get("/patient?patient_id=P001").get_json()
+        p003 = self.client.get("/patient?patient_id=P003").get_json()
+        p002_again = self.client.get("/patient?patient_id=P002").get_json()
+
+        self.assertEqual((p001["hr"], p002["hr"], p003["hr"]), (80, 85, 78))
+        self.assertEqual(p002_again["hr"], 90)
+        self.assertEqual(p001["age"], 45)
+        self.assertEqual(p002["age"], 37)
+        self.assertEqual(p003["age"], 62)
+        p001_history = {
+            item["record_type"]: item["value"] for item in p001["medical_history"]
+        }
+        self.assertEqual(p001_history["diabetes"], "Yes")
+        self.assertNotEqual(
+            p001["medical_history"],
+            p002["medical_history"],
+        )
+        self.assertEqual([item["hr"] for item in p001["observations"]], [80])
+        self.assertEqual([item["hr"] for item in p002_again["observations"]], [85, 90])
+        self.assertEqual([item["hr"] for item in p003["observations"]], [78])
+
+    def test_unknown_and_malformed_patient_identifiers_return_errors(self):
+        unknown = self.client.get("/patient?patient_id=P999")
+        malformed = self.client.get("/patient?patient_id=bad%20id")
+
+        self.assertEqual(unknown.status_code, 404)
+        self.assertEqual(unknown.get_json(), {"error": "Patient was not found."})
+        self.assertEqual(malformed.status_code, 400)
+        self.assertEqual(
+            malformed.get_json(),
+            {"error": "Patient identifier has an invalid format."},
+        )
 
     def test_patient_endpoint_advances_and_restarts_simulation(self):
         first = self.client.get("/patient").get_json()

@@ -190,6 +190,34 @@ Grid
 
 }
 
+.patient-selector-row{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    max-width:420px;
+    margin:0 auto 24px;
+}
+
+.patient-selector-row label{
+    color:#cbd5e1;
+    font-weight:600;
+}
+
+.patient-selector-row select{
+    width:100%;
+    padding:12px 14px;
+    border:1px solid #475569;
+    border-radius:10px;
+    background:#0f172a;
+    color:#fff;
+    font-size:16px;
+}
+
+.patient-selector-row select:focus-visible{
+    outline:2px solid #38bdf8;
+    outline-offset:2px;
+}
+
 .patient-grid span{
 
     color:#94a3b8;

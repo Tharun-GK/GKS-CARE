@@ -7,6 +7,7 @@ from repository import (
     get_audit_events,
     get_patient,
     get_patient_history,
+    get_patients,
     get_recent_observations,
     record_observation,
     seed_demo_patient,
@@ -49,6 +50,34 @@ class PatientRepositoryTests(unittest.TestCase):
         self.assertEqual(patient["data_source"], "synthetic_demo")
         self.assertEqual(len(history), 6)
         self.assertTrue(all(item["source"] == "synthetic_demo" for item in history))
+        self.assertEqual(
+            [patient["patient_id"] for patient in get_patients(self.database_path)],
+            ["P001", "P002", "P003"],
+        )
+
+    def test_demo_seeding_is_idempotent_and_keeps_patient_records_separate(self):
+        with transaction(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE patient_history
+                SET value = ?
+                WHERE patient_id = ? AND record_type = ?
+                """,
+                ("Existing demo value", "P001", "allergies"),
+            )
+
+        seed_demo_patient(self.database_path)
+
+        p001_history = {
+            item["record_type"]: item["value"]
+            for item in get_patient_history(self.database_path, "P001")
+        }
+        p002_history = {
+            item["record_type"]: item["value"]
+            for item in get_patient_history(self.database_path, "P002")
+        }
+        self.assertEqual(p001_history["allergies"], "Existing demo value")
+        self.assertEqual(p002_history["allergies"], "None recorded in demo")
 
     def test_observation_validation_normalizes_timezone_and_units(self):
         observation = validate_observation(**observation_values())

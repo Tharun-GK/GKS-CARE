@@ -81,6 +81,16 @@
 
         <h2>Patient Information</h2>
 
+        <div class="patient-selector-row">
+            <label for="patientSelector">Select synthetic patient</label>
+            <select id="patientSelector" aria-describedby="patientSelectionNote" disabled>
+                <option value="">Loading patients...</option>
+            </select>
+            <span id="patientSelectionNote" class="assessment-note">
+                Each demo patient has separate synthetic measurements and history.
+            </span>
+        </div>
+
         <div class="patient-grid">
 
             <div>

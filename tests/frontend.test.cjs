@@ -45,6 +45,49 @@ const samplePatient = {
     }]
 };
 
+const samplePatients = [
+    { patient_id: "P001", age: 45, gender: "Male", data_source: "synthetic_demo" },
+    { patient_id: "P002", age: 37, gender: "Female", data_source: "synthetic_demo" },
+    { patient_id: "P003", age: 62, gender: "Male", data_source: "synthetic_demo" }
+];
+
+function patientResponse(patientId) {
+    if (patientId === "P001") {
+        return samplePatient;
+    }
+
+    const isModerate = patientId === "P002";
+    const hr = isModerate ? 85 : 78;
+    const spo2 = isModerate ? 96 : 98;
+    const temp = isModerate ? 98.6 : 98.4;
+    return {
+        ...samplePatient,
+        patient_id: patientId,
+        age: isModerate ? 37 : 62,
+        gender: isModerate ? "Female" : "Male",
+        hr,
+        spo2,
+        temp,
+        bp: "120/80",
+        risk: "Low",
+        status: "Stable",
+        health_score: 100,
+        reasons: [],
+        recommendation: "Demo guidance",
+        observations: [{
+            ...samplePatient.observations[0],
+            id: isModerate ? 2 : 3,
+            hr,
+            spo2,
+            temp
+        }],
+        medical_history: [{
+            ...samplePatient.medical_history[0],
+            value: isModerate ? "None recorded in demo" : "Latex (demo)"
+        }]
+    };
+}
+
 function createDashboard({ response, canvases = true, includeChart = true, fetchImpl } = {}) {
     class Element {
         constructor() {
@@ -52,6 +95,13 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
             this.hidden = false;
             this.style = {};
             this.children = [];
+            this.listeners = {};
+            this.value = "";
+            this.disabled = false;
+        }
+
+        get lastChild() {
+            return this.children[this.children.length - 1];
         }
 
         append(...elements) {
@@ -66,6 +116,16 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
             const index = this.children.indexOf(element);
             if (index >= 0) {
                 this.children.splice(index, 1);
+            }
+        }
+
+        addEventListener(eventName, callback) {
+            this.listeners[eventName] = callback;
+        }
+
+        dispatch(eventName) {
+            if (this.listeners[eventName]) {
+                this.listeners[eventName]();
             }
         }
     }
@@ -99,6 +159,7 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
         constructor(canvas, config) {
             this.canvas = canvas;
             this.config = config;
+            this.data = config.data;
             this.updateCount = 0;
             charts.push(this);
         }
@@ -127,11 +188,23 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
         setTimeout(callback, delay) {
             scheduledTimeouts.push({ callback, delay });
         },
-        fetch: fetchImpl || (async () => response || {
-            ok: true,
-            status: 200,
-            json: async () => samplePatient
-        })
+        fetch: async url => {
+            if (url === "/patients") {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ patients: samplePatients })
+                };
+            }
+            if (fetchImpl) {
+                return fetchImpl(url);
+            }
+            return response || {
+                ok: true,
+                status: 200,
+                json: async () => patientResponse("P001")
+            };
+        }
     };
 
     if (includeChart) {
@@ -149,7 +222,9 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
         scheduledIntervals,
         consoleErrors,
         async settle() {
-            await new Promise(resolve => setImmediate(resolve));
+            for (let turn = 0; turn < 4; turn++) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
         }
     };
 }
@@ -221,7 +296,14 @@ test("overlapping refresh calls are ignored while a request is in flight", async
     let resolveResponse;
     let fetchCount = 0;
     const dashboard = createDashboard({
-        fetchImpl() {
+        fetchImpl(url) {
+            if (url === "/patients") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ patients: samplePatients })
+                });
+            }
             fetchCount++;
             return new Promise(resolve => {
                 resolveResponse = resolve;
@@ -229,7 +311,7 @@ test("overlapping refresh calls are ignored while a request is in flight", async
         }
     });
 
-    vm.runInContext("updateDashboard()", dashboard.context);
+    await dashboard.settle();
     assert.equal(fetchCount, 1);
 
     await vm.runInContext("updateDashboard()", dashboard.context);
@@ -238,8 +320,75 @@ test("overlapping refresh calls are ignored while a request is in flight", async
     resolveResponse({
         ok: true,
         status: 200,
-        json: async () => samplePatient
+        json: async () => patientResponse("P001")
     });
     await dashboard.settle();
     assert.equal(dashboard.elements.get("hr").innerText, 112);
+});
+
+test("changing patient clears prior data and loads isolated patient metrics/history", async () => {
+    const dashboard = createDashboard({
+        fetchImpl: async url => {
+            const patientId = new URL(url, "http://localhost").searchParams.get("patient_id");
+            return {
+                ok: true,
+                status: 200,
+                json: async () => patientResponse(patientId)
+            };
+        }
+    });
+    await dashboard.settle();
+
+    const selector = dashboard.context.document.getElementById("patientSelector");
+    assert.equal(selector.children.length, 3);
+    assert.equal(selector.disabled, false);
+    assert.equal(dashboard.elements.get("hr").innerText, 112);
+
+    selector.value = "P002";
+    selector.dispatch("change");
+    assert.equal(dashboard.elements.get("hr").innerText, "--");
+    await dashboard.settle();
+
+    assert.equal(dashboard.elements.get("patient_id").innerText, "P002");
+    assert.equal(dashboard.elements.get("hr").innerText, 85);
+    assert.equal(dashboard.elements.get("spo2").innerText, 96);
+    assert.equal(dashboard.elements.get("allergies").innerText, "None recorded in demo");
+    assert.deepEqual(Array.from(dashboard.charts[0].data.datasets[0].data), [85]);
+});
+
+test("stale patient response cannot overwrite a newly selected patient", async () => {
+    let resolveP001;
+    const dashboard = createDashboard({
+        fetchImpl: url => {
+            const patientId = new URL(url, "http://localhost").searchParams.get("patient_id");
+            if (patientId === "P001") {
+                return new Promise(resolve => {
+                    resolveP001 = resolve;
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: async () => patientResponse(patientId)
+            });
+        }
+    });
+    await dashboard.settle();
+
+    const selector = dashboard.context.document.getElementById("patientSelector");
+    selector.value = "P002";
+    selector.dispatch("change");
+    resolveP001({
+        ok: true,
+        status: 200,
+        json: async () => patientResponse("P001")
+    });
+    await dashboard.settle();
+
+    assert.equal(dashboard.elements.get("patient_id").innerText, "--");
+    const pendingRefresh = dashboard.scheduledTimeouts.at(-1);
+    pendingRefresh.callback();
+    await dashboard.settle();
+    assert.equal(dashboard.elements.get("patient_id").innerText, "P002");
+    assert.equal(dashboard.elements.get("hr").innerText, 85);
 });

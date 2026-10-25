@@ -1,125 +1,84 @@
 # GKS-CARE
 
-**AI-Based Real-Time Patient Deterioration Monitoring System (Simulated)**
+GKS-CARE is a Flask dashboard that demonstrates monitoring synthetic patient vital signs. Its risk levels are produced by fixed, explainable rules; it does not use a trained or clinically validated AI model.
 
----
-
-## Overview
-
-GKS-CARE is an AI-based patient monitoring system that simulates real-time hospital vital tracking.
-It continuously reads patient data, analyzes risk level, and displays alerts through a live dashboard.
-
----
-
-## Why I built this
-
-In real hospitals, patients are not monitored every second. Because of this, early signs of deterioration can be missed, and by the time action is taken, the situation may become critical.
-
-So I wanted to build a system that can track patient vitals continuously and give early warnings before things get serious.
-
----
-
-## What this system does
-
-* Reads patient data (heart rate, oxygen level, etc.)
-* Simulates real-time monitoring using stored data
-* Calculates risk level (Low / Medium / High)
-* Gives reasons for the risk (like low oxygen, high heart rate)
-* Shows how the condition changes over time
-
----
+> **Demonstration only.** Do not use this application for clinical decisions or real patient care. Measurements, patient history, emergency-response details, vital indicators, and guidance are examples. The application does not contact a clinician, hospital, or emergency service.
 
 ## Features
 
-* Real-time patient vital monitoring
-* Live dashboard interface
-* Auto-refreshing data every few seconds
-* Risk prediction (Low / Medium / High)
-* Alert reasons shown instantly
-* Simulated stable / moderate / critical patients
+- Live-style dashboard updates from a local synthetic CSV dataset.
+- Heart rate, SpO₂, temperature, and simulated blood-pressure display.
+- Rule-based risk levels with contributing reasons.
+- Recent trend charts, a vital indicator, and monitoring statistics.
+- Example medical history, emergency-response information, and a risk-change activity log.
+- Visible error state and automatic retry when the patient endpoint is unavailable.
 
----
+## Requirements
 
-## Tech Stack
+- Python 3.10 or later
+- Node.js 18 or later for the frontend tests
 
-* Python
-* Flask
-* HTML
-* CSS
-* JavaScript
-* Pandas
+## Install and run
 
+From the repository directory:
 
----
-
-## Project Structure
-
-GKS-CARE/
-│── app.py
-│── risk_logic.py
-│── README.md
-
-├── data/
-│   ├── stable.csv
-│   ├── moderate.csv
-│   └── critical.csv
-
-├── templates/
-│   └── dashboard.html
-
-├── static/
-│   ├── style.css
-│   └── script.js
-
-
----
-
-## How to Run
-
-```bash
-git clone https://github.com/Tharun-GK/GKS-CARE.git
-cd GKS-CARE
-pip install flask pandas
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 python app.py
 ```
 
-Then open:
+Open <http://127.0.0.1:5000> in a browser. The application reads `data/critical.csv` relative to the project, regardless of the current working directory.
 
-http://127.0.0.1:5000
+## Tests and validation
 
+Run the Flask route and risk-rule tests:
 
----
+```powershell
+python -m unittest discover -s tests -p "test_*.py" -v
+```
 
-## Output
+Run the JavaScript dashboard tests and syntax check:
 
-The system prints:
+```powershell
+node --test tests/frontend.test.cjs
+node --check static/script.js
+```
 
-* Patient vitals
-* Risk level
-* Reasons for the risk
+## API
 
-It updates every few seconds to simulate real-time monitoring.
+- `GET /` serves the dashboard.
+- `GET /patient` returns the next synthetic observation and rule-based assessment as JSON. When the configured CSV is missing or invalid, it returns HTTP `503` with a non-sensitive error message.
 
----
+The CSV must contain numeric `time`, `hr`, `spo2`, and `temp` columns. The bundled sample files are synthetic. The running demo uses `data/critical.csv`.
 
-## Future plans
+## Project structure
 
-* Build a dashboard UI
-* Convert this into a real-time API
-* Improve prediction logic
+```text
+app.py
+risk_logic.py
+requirements.txt
+data/
+  critical.csv
+  moderate.csv
+  stable.csv
+static/
+  script.js
+  style.css
+templates/
+  dashboard.html
+tests/
+  frontend.test.cjs
+  test_app.py
+  test_risk_logic.py
+```
 
----
-## Dashboard Preview
+## Current limitations
 
-<img width="1802" height="854" alt="image" src="https://github.com/user-attachments/assets/5f98bddf-ef02-4c95-8069-48321b911f04" />
+- Risk classification and the displayed vital indicator are simple demonstration logic, not diagnoses, validated predictions, or clinical scores.
+- Blood pressure, patient details, medical history, and emergency-response information are illustrative values, not observations from verified records or live integrations.
+- The application has no persistent storage, multi-user access, authentication, authorization, or real-time emergency integration.
+- Chart.js is loaded from a public CDN, so charts require network access to that CDN.
 
-
-## Note
-
-This project is only for learning purposes and not for real medical use.
-
----
-
-## Author
-
-Tharun G K
+Do not enter real patient or other sensitive information.

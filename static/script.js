@@ -1,401 +1,273 @@
-// =====================================
-// Live Trend Data
-// =====================================
+const REFRESH_INTERVAL_MS = 2000;
+const MAX_HISTORY_LENGTH = 15;
+const MAX_ACTIVITY_LOG_ITEMS = 20;
 
 let hrHistory = [];
 let spo2History = [];
 let tempHistory = [];
-let activityLogs = [];
-
 let monitoringSeconds = 0;
-const labels = new Array(15).fill("");
+let updateInProgress = false;
+let lastLoggedRisk = null;
 
-// =====================================
-// Charts
-// =====================================
+function createChart(canvasId, history, color) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === "undefined") {
+        return null;
+    }
 
-const hrChart = new Chart(document.getElementById("hrChart"), {
-    type: "line",
-    data: {
-        labels: labels,
-        datasets: [{
-            data: hrHistory,
-            borderColor: "#ff4d6d",
-            backgroundColor: "rgba(255,77,109,0.15)",
-            fill: true,
-            tension: 0.35
-        }]
-    },
-    options: {
-        responsive: true,
-        animation: false,
-        plugins: {
-            legend: {
-                display: false
-            }
+    return new Chart(canvas, {
+        type: "line",
+        data: {
+            labels: new Array(MAX_HISTORY_LENGTH).fill(""),
+            datasets: [{
+                data: history,
+                borderColor: color,
+                backgroundColor: color,
+                fill: true,
+                tension: 0.35
+            }]
         },
-        scales: {
-            x: {
-                grid: {
-                    color: "#334155"
+        options: {
+            responsive: true,
+            animation: false,
+            plugins: {
+                legend: {
+                    display: false
                 }
             },
-            y: {
-                grid: {
-                    color: "#334155"
+            scales: {
+                x: {
+                    grid: {
+                        color: "#334155"
+                    }
+                },
+                y: {
+                    grid: {
+                        color: "#334155"
+                    }
                 }
             }
         }
-    }
-});
+    });
+}
 
-const spo2Chart = new Chart(document.getElementById("spo2Chart"), {
-    type: "line",
-    data: {
-        labels: labels,
-        datasets: [{
-            data: spo2History,
-            borderColor: "#2dd4bf",
-            backgroundColor: "rgba(45,212,191,0.15)",
-            fill: true,
-            tension: 0.35
-        }]
-    },
-    options: {
-        responsive: true,
-        animation: false,
-        plugins: {
-            legend: {
-                display: false
-            }
-        },
-        scales: {
-            x: {
-                grid: {
-                    color: "#334155"
-                }
-            },
-            y: {
-                grid: {
-                    color: "#334155"
-                }
-            }
-        }
-    }
-});
-
-const tempChart = new Chart(document.getElementById("tempChart"), {
-    type: "line",
-    data: {
-        labels: labels,
-        datasets: [{
-            data: tempHistory,
-            borderColor: "#fbbf24",
-            backgroundColor: "rgba(251,191,36,0.15)",
-            fill: true,
-            tension: 0.35
-        }]
-    },
-    options: {
-        responsive: true,
-        animation: false,
-        plugins: {
-            legend: {
-                display: false
-            }
-        },
-        scales: {
-            x: {
-                grid: {
-                    color: "#334155"
-                }
-            },
-            y: {
-                grid: {
-                    color: "#334155"
-                }
-            }
-        }
-    }
-});
-
-// =====================================
-// Clock
-// =====================================
+const hrChart = createChart("hrChart", hrHistory, "#ff4d6d");
+const spo2Chart = createChart("spo2Chart", spo2History, "#2dd4bf");
+const tempChart = createChart("tempChart", tempHistory, "#fbbf24");
 
 function updateClock() {
-
-    const now = new Date();
-
-    document.getElementById("clock").innerText =
-        now.toLocaleDateString() + " | " +
-        now.toLocaleTimeString();
-}
-
-updateClock();
-setInterval(updateClock, 1000);
-
-// =====================================
-// Dashboard Update
-// =====================================
-
-async function updateDashboard() {
-
-    try {
-
-        const response = await fetch("/patient");
-        const data = await response.json();
-
-        // Generate AI Logs
-
-if(data.risk === "High")
-    addLog("🚨 High Risk Detected");
-
-if(data.hr > 110)
-    addLog(`❤️ Heart Rate Increased to ${data.hr} BPM`);
-
-if(data.spo2 < 92)
-    addLog(`🫁 Oxygen dropped to ${data.spo2}%`);
-
-if(data.status === "Critical Condition")
-    addLog("🏥 Patient Status → Critical");
-
-if(data.recommendation)
-    addLog("🤖 AI Recommendation Updated");
-
-        // ---------------- Patient Info ----------------
-
-        document.getElementById("patient_id").innerText = data.patient_id;
-        document.getElementById("age").innerText = data.age;
-        document.getElementById("gender").innerText = data.gender;
-        document.getElementById("time").innerText = data.last_updated;
-
-        // ---------------- Vitals ----------------
-
-        document.getElementById("hr").innerText = data.hr;
-        document.getElementById("bp").innerText = data.bp;
-        document.getElementById("spo2").innerText = data.spo2;
-        document.getElementById("temp").innerText = data.temp;
-
-        
-        // ---------------- AI Summary ----------------
-
-        document.getElementById("health_score").innerText =
-            data.health_score + "%";
-
-        document.getElementById("confidence").innerText =
-            data.confidence + "%";
-
-        document.getElementById("status").innerText =
-            data.status;
-
-        // Progress Bars
-
-        document.getElementById("health_bar").style.width =
-            data.health_score + "%";
-
-        document.getElementById("confidence_bar").style.width =
-            data.confidence + "%";
-
-        // ---------------- Risk ----------------
-
-        document.getElementById("risk").innerText =
-            data.risk;
-
-        document.getElementById("reason").innerText =
-            data.reasons.join(", ");
-
-        document.getElementById("recommendation").innerText =
-            data.recommendation;
-
-        // ---------------- Risk Color ----------------
-
-        const risk=document.getElementById("risk");
-
-risk.innerText=data.risk;
-
-const banner=document.getElementById("alertBanner");
-
-if(data.risk=="Low"){
-
-    risk.style.color="#00ff88";
-    banner.style.display="none";
-
-}
-
-else if(data.risk=="Medium"){
-
-    risk.style.color="#ffd000";
-    banner.style.display="none";
-
-}
-
-else{
-
-    risk.style.color="#ff3b3b";
-    banner.style.display="flex";
-
-}
-
-// ===============================
-// AI Activity Log
-// ===============================
-
-const logContainer = document.getElementById("activity_log");
-
-if (logContainer) {
-
-    const time = new Date().toLocaleTimeString();
-
-    let message = "";
-
-    if (data.risk === "High") {
-        message = "🚨 High Risk Detected";
+    const clock = document.getElementById("clock");
+    if (clock) {
+        const now = new Date();
+        clock.innerText = now.toLocaleDateString() + " | " + now.toLocaleTimeString();
     }
-    else if (data.risk === "Medium") {
-        message = "⚠️ Patient Under Observation";
+}
+
+function showDashboardError(message) {
+    const errorMessage = document.getElementById("dashboardError");
+    if (errorMessage) {
+        errorMessage.innerText = message;
+        errorMessage.hidden = false;
     }
-    else {
-        message = "✅ Patient Stable";
+}
+
+function hideDashboardError() {
+    const errorMessage = document.getElementById("dashboardError");
+    if (errorMessage) {
+        errorMessage.hidden = true;
+    }
+}
+
+function validatePatientData(data) {
+    return data
+        && Number.isFinite(data.hr)
+        && Number.isFinite(data.spo2)
+        && Number.isFinite(data.temp)
+        && Number.isFinite(data.health_score)
+        && Number.isFinite(data.last_updated)
+        && ["Low", "Medium", "High"].includes(data.risk)
+        && Array.isArray(data.reasons)
+        && typeof data.recommendation === "string";
+}
+
+function addLog(message) {
+    const logContainer = document.getElementById("activityLog");
+    if (!logContainer) {
+        return;
     }
 
     const item = document.createElement("div");
     item.className = "log-item";
-    item.innerHTML = `
-        <span class="log-time">${time}</span>
-        <span>${message}</span>
-    `;
 
+    const time = document.createElement("span");
+    time.className = "log-time";
+    time.innerText = new Date().toLocaleTimeString();
+
+    const text = document.createElement("span");
+    text.className = "log-text";
+    text.innerText = message;
+
+    item.append(time, text);
     logContainer.prepend(item);
 
-    while (logContainer.children.length > 20) {
+    while (logContainer.children.length > MAX_ACTIVITY_LOG_ITEMS) {
         logContainer.removeChild(logContainer.lastChild);
     }
 }
 
-        // ---------------- Status Color ----------------
+function updateRiskStatus(data) {
+    const risk = document.getElementById("risk");
+    if (risk) {
+        risk.innerText = data.risk;
+        risk.style.color = {
+            Low: "#00ff88",
+            Medium: "#ffd000",
+            High: "#ff3b3b"
+        }[data.risk];
+    }
 
-        const status = document.getElementById("status");
+    const banner = document.getElementById("alertBanner");
+    if (banner) {
+        banner.style.display = data.risk === "High" ? "flex" : "none";
+    }
 
-        if (data.status === "Stable") {
+    if (data.risk !== lastLoggedRisk) {
+        const messages = {
+            Low: "Demo rules report no threshold flagged",
+            Medium: "Demo rules flagged a moderate pattern",
+            High: "Demo rules flagged a high-risk pattern"
+        };
+        addLog(messages[data.risk]);
+        lastLoggedRisk = data.risk;
+    }
+}
 
-            status.style.color = "#00ff88";
+function updateStatistics() {
+    if (hrHistory.length > 0) {
+        const highestHeartRate = document.getElementById("max_hr");
+        if (highestHeartRate) {
+            highestHeartRate.innerText = Math.max(...hrHistory);
+        }
+    }
 
-        } else if (data.status === "Under Observation") {
+    if (spo2History.length > 0) {
+        const lowestOxygen = document.getElementById("min_spo2");
+        if (lowestOxygen) {
+            lowestOxygen.innerText = Math.min(...spo2History) + "%";
+        }
+    }
 
-            status.style.color = "#ffd000";
+    if (tempHistory.length > 0) {
+        const averageTemperature = tempHistory.reduce((total, value) => total + value, 0)
+            / tempHistory.length;
+        const averageTemperatureElement = document.getElementById("avg_temp");
+        if (averageTemperatureElement) {
+            averageTemperatureElement.innerText = averageTemperature.toFixed(1) + "°F";
+        }
+    }
+}
 
-        } else {
+async function updateDashboard() {
+    if (updateInProgress) {
+        return;
+    }
 
-            status.style.color = "#ff3b3b";
+    updateInProgress = true;
+
+    try {
+        const response = await fetch("/patient");
+        if (!response.ok) {
+            throw new Error("Patient endpoint returned HTTP " + response.status);
         }
 
-        // ---------------- Charts ----------------
+        const data = await response.json();
+        if (!validatePatientData(data)) {
+            throw new Error("Patient endpoint returned an invalid response.");
+        }
+
+        hideDashboardError();
+
+        const patientFields = {
+            patient_id: data.patient_id,
+            age: data.age,
+            gender: data.gender,
+            time: data.last_updated,
+            hr: data.hr,
+            bp: data.bp,
+            spo2: data.spo2,
+            temp: data.temp,
+            health_score: data.health_score + "%",
+            status: data.status,
+            reason: data.reasons.join(", "),
+            recommendation: data.recommendation
+        };
+
+        Object.entries(patientFields).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.innerText = value;
+            }
+        });
+
+        const healthBar = document.getElementById("health_bar");
+        if (healthBar) {
+            healthBar.style.width = data.health_score + "%";
+        }
+
+        updateRiskStatus(data);
+
+        const status = document.getElementById("status");
+        if (status) {
+            status.style.color = {
+                Stable: "#00ff88",
+                "Under Observation": "#ffd000",
+                "Critical Condition": "#ff3b3b"
+            }[data.status] || "";
+        }
 
         hrHistory.push(data.hr);
         spo2History.push(data.spo2);
         tempHistory.push(data.temp);
 
-        if (hrHistory.length > 15) hrHistory.shift();
-        if (spo2History.length > 15) spo2History.shift();
-        if (tempHistory.length > 15) tempHistory.shift();
+        if (hrHistory.length > MAX_HISTORY_LENGTH) hrHistory.shift();
+        if (spo2History.length > MAX_HISTORY_LENGTH) spo2History.shift();
+        if (tempHistory.length > MAX_HISTORY_LENGTH) tempHistory.shift();
 
-        hrChart.update();
-        spo2Chart.update();
-        tempChart.update();
+        [hrChart, spo2Chart, tempChart].forEach(chart => {
+            if (chart) {
+                chart.update();
+            }
+        });
 
-        function addLog(message){
-
-    const now = new Date();
-
-    const time = now.toLocaleTimeString();
-
-    activityLogs.unshift({
-        time,
-        message
-    });
-
-    if(activityLogs.length > 20)
-        activityLogs.pop();
-
-    const logDiv = document.getElementById("activityLog");
-
-    logDiv.innerHTML = "";
-
-    activityLogs.forEach(log=>{
-
-        logDiv.innerHTML += `
-        <div class="log-item">
-            <div class="log-time">${log.time}</div>
-            <div class="log-text">${log.message}</div>
-        </div>
-        `;
-
-    });
-
-}
-        // =======================================
-// Dashboard Statistics
-// =======================================
-
-if (hrHistory.length > 0) {
-
-    document.getElementById("max_hr").innerText =
-        Math.max(...hrHistory);
-
-}
-
-if (spo2History.length > 0) {
-
-    document.getElementById("min_spo2").innerText =
-        Math.min(...spo2History) + "%";
-
-}
-
-if (tempHistory.length > 0) {
-
-    const avg =
-        tempHistory.reduce((a,b)=>a+b,0) /
-        tempHistory.length;
-
-    document.getElementById("avg_temp").innerText =
-        avg.toFixed(1) + "°F";
-
-}
-
+        updateStatistics();
+    } catch (error) {
+        console.error("Dashboard update failed:", error);
+        showDashboardError(
+            "Live measurements are unavailable. Displayed readings may be out of date; retrying automatically."
+        );
+    } finally {
+        updateInProgress = false;
+        setTimeout(updateDashboard, REFRESH_INTERVAL_MS);
     }
-
-    catch (error) {
-
-        console.error("Dashboard Error:", error);
-
-    }
-
 }
 
-// =====================================
-// Start Dashboard
-// =====================================
-
+updateClock();
+setInterval(updateClock, 1000);
 updateDashboard();
 
-setInterval(updateDashboard, 2000);
-
-// =======================================
-// Monitoring Timer
-// =======================================
-
 setInterval(() => {
-
     monitoringSeconds++;
 
-    const hrs = Math.floor(monitoringSeconds / 3600);
-    const mins = Math.floor((monitoringSeconds % 3600) / 60);
-    const secs = monitoringSeconds % 60;
+    const hours = Math.floor(monitoringSeconds / 3600);
+    const minutes = Math.floor((monitoringSeconds % 3600) / 60);
+    const seconds = monitoringSeconds % 60;
+    const monitoringTime = document.getElementById("monitor_time");
 
-    document.getElementById("monitor_time").innerText =
-        String(hrs).padStart(2,'0') + ":" +
-        String(mins).padStart(2,'0') + ":" +
-        String(secs).padStart(2,'0');
-
-},1000);
+    if (monitoringTime) {
+        monitoringTime.innerText = [
+            String(hours).padStart(2, "0"),
+            String(minutes).padStart(2, "0"),
+            String(seconds).padStart(2, "0")
+        ].join(":");
+    }
+}, 1000);

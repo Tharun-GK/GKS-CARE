@@ -28,13 +28,13 @@
     <h1>GKS-CARE</h1>
 
     <p class="subtitle">
-        AI Critical Patient Monitoring Dashboard
+        Rule-Based Patient Monitoring Dashboard
     </p>
 
     <div class="top-status">
 
         <div class="system-online">
-            🟢 AI SYSTEM ONLINE
+            🟢 DEMO SYSTEM ONLINE
         </div>
 
         <div class="clock" id="clock">
@@ -43,19 +43,12 @@
 
     </div>
 
+    <div class="demo-notice" role="note">
+        DEMONSTRATION ONLY · Synthetic measurements · Not for clinical use
+    </div>
 
-    <!-- ================================= -->
-    <!-- Emergency Banner -->
-    <!-- ================================= -->
-
-    <div id="emergencyBanner" class="emergency-banner">
-
-        🚨 CRITICAL PATIENT ALERT
-
-        <p>
-            Immediate medical attention required.
-        </p>
-
+    <div id="dashboardError" class="dashboard-error" role="alert" aria-live="assertive" hidden>
+        Live measurements are unavailable. Displayed readings may be out of date; retrying automatically.
     </div>
 
     <!-- ================================= -->
@@ -173,7 +166,7 @@
 
         <div class="card">
 
-            <h2>💚 Overall Health Score</h2>
+            <h2>💚 Rule-Based Vital Indicator</h2>
 
             <h1 id="health_score">--%</h1>
 
@@ -199,22 +192,13 @@
     </div>
 
 
-    <!-- AI Confidence -->
-
     <div class="card">
 
-        <h2>🤖 AI Prediction Confidence</h2>
-
-        <h1 id="confidence">--%</h1>
-
-        <div class="progress">
-
-            <div id="confidence_bar"
-                 class="progress-fill">
-
-            </div>
-
-        </div>
+        <h2>📋 Assessment Method</h2>
+        <p class="assessment-note">
+            This demonstration uses fixed rules, not a trained or clinically validated AI model.
+            Its risk level and vital indicator are not diagnoses or validated predictions.
+        </p>
 
     </div>
 
@@ -225,7 +209,7 @@
 
     <div class="card risk-card">
 
-        <h2>AI Risk Analysis</h2>
+        <h2>Rule-Based Risk Assessment</h2>
 
         <h1 id="risk">--</h1>
 
@@ -244,7 +228,7 @@
 
     <div class="card recommendation">
 
-        <h2>AI Recommendation</h2>
+        <h2>Demonstration Guidance</h2>
 
         <p id="recommendation">
 
@@ -259,6 +243,9 @@ Emergency Response Panel
 <div class="card emergency-panel">
 
     <h2>🚑 Emergency Response</h2>
+    <p class="assessment-note">
+        Sample information only. No clinician, hospital, or emergency service is contacted by this application.
+    </p>
 
     <div class="emergency-grid">
 
@@ -413,6 +400,7 @@ Patient Medical History
 <div class="card">
 
     <h2>🩺 Patient Medical History</h2>
+    <p class="assessment-note">Example information for demonstration only; it is not a verified patient record.</p>
 
     <div class="history-grid">
 
@@ -454,7 +442,7 @@ Patient Medical History
 
 <div class="card">
 
-    <h2>📜 AI Activity Log</h2>
+    <h2>📜 Monitoring Activity Log</h2>
 
     <div id="activityLog" class="activity-log">
 
@@ -469,7 +457,7 @@ Patient Medical History
 
     <footer>
 
-        GKS-CARE • AI Critical Patient Monitoring System • Version 1.1
+        GKS-CARE • Simulated Rule-Based Patient Monitoring • Version 1.1
 
     </footer>
 

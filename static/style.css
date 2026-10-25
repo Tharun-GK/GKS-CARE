@@ -459,8 +459,6 @@ font-size:34px;
 
     margin-bottom:25px;
 
-    display:flex;
-
     align-items:center;
 
     gap:18px;
@@ -685,4 +683,32 @@ transform:translateY(0);
 
     font-size:22px;
 
+}
+
+.demo-notice,
+.dashboard-error{
+    padding:14px 18px;
+    margin-bottom:22px;
+    border-radius:12px;
+    text-align:center;
+    font-weight:600;
+}
+
+.demo-notice{
+    background:#1e3a8a;
+    color:#bfdbfe;
+}
+
+.dashboard-error{
+    background:#7f1d1d;
+    color:#fee2e2;
+}
+
+.dashboard-error[hidden]{
+    display:none;
+}
+
+.assessment-note{
+    color:#cbd5e1;
+    line-height:1.6;
 }

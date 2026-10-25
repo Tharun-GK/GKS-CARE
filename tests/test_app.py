@@ -18,7 +18,8 @@ class PatientApiTests(unittest.TestCase):
         self.dataset_path = Path(self.temp_directory.name) / "patient.csv"
         self.dataset_path.write_text(VALID_CSV, encoding="utf-8")
 
-        app = create_app(self.dataset_path)
+        self.database_path = Path(self.temp_directory.name) / "test.sqlite3"
+        app = create_app(self.dataset_path, self.database_path)
         app.config["TESTING"] = True
         self.client = app.test_client()
 
@@ -61,23 +62,34 @@ class PatientApiTests(unittest.TestCase):
                 "patient_id",
                 "age",
                 "gender",
+                "data_source",
                 "last_updated",
+                "observed_at",
                 "hr",
                 "spo2",
                 "temp",
+                "temperature_unit",
                 "bp",
                 "risk",
                 "status",
                 "health_score",
                 "reasons",
                 "recommendation",
+                "medical_history",
+                "observations",
             },
         )
         self.assertEqual(data["patient_id"], "P001")
+        self.assertEqual(data["data_source"], "synthetic_demo")
+        self.assertEqual(data["temperature_unit"], "F")
         self.assertEqual(data["risk"], "Low")
         self.assertEqual(data["status"], "Stable")
         self.assertIsInstance(data["reasons"], list)
         self.assertIsInstance(data["health_score"], int)
+        self.assertEqual(len(data["observations"]), 1)
+        self.assertEqual(data["observations"][0]["hr"], data["hr"])
+        self.assertEqual(data["observations"][0]["temperature_unit"], "F")
+        self.assertEqual(len(data["medical_history"]), 6)
         self.assertNotIn("confidence", data)
 
     def test_patient_endpoint_advances_and_restarts_simulation(self):
@@ -87,10 +99,23 @@ class PatientApiTests(unittest.TestCase):
 
         self.assertEqual((first["hr"], second["hr"], third["hr"]), (80, 105, 80))
         self.assertEqual(second["risk"], "Medium")
+        self.assertEqual(len(third["observations"]), 3)
+
+    def test_observations_persist_across_app_restarts(self):
+        self.client.get("/patient")
+
+        restarted_app = create_app(self.dataset_path, self.database_path)
+        restarted_app.config["TESTING"] = True
+        response = restarted_app.test_client().get("/patient")
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(data["observations"]), 2)
+        self.assertEqual([item["hr"] for item in data["observations"]], [80, 80])
 
     def test_missing_dataset_returns_controlled_service_error(self):
         missing_path = Path(self.temp_directory.name) / "missing.csv"
-        app = create_app(missing_path)
+        app = create_app(missing_path, self.database_path)
         app.config["TESTING"] = True
 
         response = app.test_client().get("/patient")
@@ -113,7 +138,7 @@ class PatientApiTests(unittest.TestCase):
             with self.subTest(dataset=name):
                 path = Path(self.temp_directory.name) / f"{name}.csv"
                 path.write_text(contents, encoding="utf-8")
-                app = create_app(path)
+                app = create_app(path, self.database_path)
                 app.config["TESTING"] = True
 
                 response = app.test_client().get("/patient")

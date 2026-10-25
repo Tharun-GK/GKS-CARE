@@ -12,6 +12,7 @@ GKS-CARE is a Flask dashboard that demonstrates monitoring synthetic patient vit
 - Recent trend charts, a vital indicator, and monitoring statistics.
 - Example medical history, emergency-response information, and a risk-change activity log.
 - Visible error state and automatic retry when the patient endpoint is unavailable.
+- Local SQLite storage for the synthetic patient, example history, observations, and audit events.
 
 ## Requirements
 
@@ -30,6 +31,12 @@ python app.py
 ```
 
 Open <http://127.0.0.1:5000> in a browser. The application reads `data/critical.csv` relative to the project, regardless of the current working directory.
+
+On startup, the application initializes the version 1 schema from `schema.sql`, creates the synthetic `P001` demo record if it does not exist, and stores the local database at `instance/gks-care.sqlite3`. The database and `instance/` directory are ignored by Git. Each successful `GET /patient` records the returned synthetic observation and a corresponding audit event. The dashboard charts use the most recent stored observations, so they survive page reloads and application restarts.
+
+Observation timestamps must include a timezone and are normalized to UTC. Heart rate must be a finite positive number, SpO₂ must be between 0 and 100 percent, and temperature must be finite and use `F` or `C`. These are storage/input constraints, not clinical thresholds or statements of normality. Patient identifiers are restricted to letters, digits, underscores, and hyphens.
+
+The schema is initialized idempotently using `CREATE TABLE IF NOT EXISTS` and records its current version in `schema_migrations`. There is no automatic migration runner yet; future schema changes must add a documented migration before changing existing databases.
 
 ## Tests and validation
 
@@ -57,8 +64,11 @@ The CSV must contain numeric `time`, `hr`, `spo2`, and `temp` columns. The bundl
 
 ```text
 app.py
+database.py
+repository.py
 risk_logic.py
 requirements.txt
+schema.sql
 data/
   critical.csv
   moderate.csv
@@ -71,6 +81,7 @@ templates/
 tests/
   frontend.test.cjs
   test_app.py
+  test_repository.py
   test_risk_logic.py
 ```
 
@@ -78,7 +89,8 @@ tests/
 
 - Risk classification and the displayed vital indicator are simple demonstration logic, not diagnoses, validated predictions, or clinical scores.
 - Blood pressure, patient details, medical history, and emergency-response information are illustrative values, not observations from verified records or live integrations.
-- The application has no persistent storage, multi-user access, authentication, authorization, or real-time emergency integration.
+- SQLite is a single-user local demonstration store. There is no multi-user access, authentication, authorization, backup/retention workflow, or real-time emergency integration.
+- Each successful patient API request records another synthetic observation; the application does not deduplicate observations.
 - Chart.js is loaded from a public CDN, so charts require network access to that CDN.
 
 Do not enter real patient or other sensitive information.

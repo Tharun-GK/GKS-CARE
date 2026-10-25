@@ -1,0 +1,136 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from database import initialize_database, transaction
+from repository import (
+    get_audit_events,
+    get_patient,
+    get_patient_history,
+    get_recent_observations,
+    record_observation,
+    seed_demo_patient,
+    validate_observation,
+    validate_patient_id,
+)
+
+
+def observation_values(**overrides):
+    values = {
+        "patient_id": "P001",
+        "measured_at": "2026-01-02T03:04:05+05:30",
+        "heart_rate_bpm": 80,
+        "spo2_percent": 98,
+        "temperature_value": 98.4,
+        "temperature_unit": "F",
+        "source": "synthetic_csv",
+    }
+    values.update(overrides)
+    return values
+
+
+class PatientRepositoryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_directory.cleanup)
+        self.database_path = Path(self.temp_directory.name) / "nested" / "test.sqlite3"
+        initialize_database(self.database_path)
+        seed_demo_patient(self.database_path)
+
+    def test_database_initializes_schema_version_and_synthetic_patient_records(self):
+        patient = get_patient(self.database_path, "P001")
+        history = get_patient_history(self.database_path, "P001")
+        with transaction(self.database_path) as connection:
+            version = connection.execute(
+                "SELECT version FROM schema_migrations"
+            ).fetchone()["version"]
+
+        self.assertEqual(version, 1)
+        self.assertEqual(patient["data_source"], "synthetic_demo")
+        self.assertEqual(len(history), 6)
+        self.assertTrue(all(item["source"] == "synthetic_demo" for item in history))
+
+    def test_observation_validation_normalizes_timezone_and_units(self):
+        observation = validate_observation(**observation_values())
+
+        self.assertEqual(
+            observation["measured_at"],
+            "2026-01-01T21:34:05.000000Z",
+        )
+        self.assertEqual(observation["temperature_unit"], "F")
+        self.assertEqual(observation["source"], "synthetic_csv")
+
+    def test_invalid_observation_values_are_rejected(self):
+        invalid_cases = (
+            {"patient_id": "invalid id"},
+            {"heart_rate_bpm": 0},
+            {"heart_rate_bpm": float("nan")},
+            {"spo2_percent": -1},
+            {"spo2_percent": 101},
+            {"temperature_value": float("inf")},
+            {"temperature_unit": "K"},
+            {"source": "  "},
+            {"measured_at": "2026-01-02T03:04:05"},
+            {"measured_at": "not-a-timestamp"},
+        )
+
+        for invalid_values in invalid_cases:
+            with self.subTest(invalid_values=invalid_values):
+                with self.assertRaises(ValueError):
+                    validate_observation(**observation_values(**invalid_values))
+
+    def test_patient_identifier_validation(self):
+        self.assertEqual(validate_patient_id("demo_patient-1"), "demo_patient-1")
+        with self.assertRaises(ValueError):
+            validate_patient_id("P/001")
+        with self.assertRaises(ValueError):
+            validate_patient_id(123)
+
+    def test_observations_and_audit_events_are_saved_and_retrieved(self):
+        values = observation_values()
+        observation = record_observation(
+            self.database_path,
+            **values,
+            assessment={"risk": "Medium", "reasons": ["Oxygen dropping"]},
+        )
+
+        stored = get_recent_observations(self.database_path, "P001")
+        events = get_audit_events(self.database_path, "P001")
+
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["id"], observation["id"])
+        self.assertEqual(stored[0]["heart_rate_bpm"], 80)
+        self.assertEqual(stored[0]["spo2_percent"], 98)
+        self.assertEqual(stored[0]["temperature_unit"], "F")
+        self.assertEqual(events[-1]["event_type"], "observation_recorded")
+        self.assertEqual(events[-1]["details"]["risk"], "Medium")
+        self.assertEqual(events[-1]["details"]["reasons"], ["Oxygen dropping"])
+
+    def test_recent_observations_are_limited_and_chronological(self):
+        for day in (3, 1, 2):
+            record_observation(
+                self.database_path,
+                **observation_values(
+                    measured_at=f"2026-01-0{day}T03:04:05Z",
+                    heart_rate_bpm=70 + day,
+                ),
+                assessment={"risk": "Low", "reasons": []},
+            )
+
+        recent = get_recent_observations(self.database_path, "P001", limit=2)
+
+        self.assertEqual([item["heart_rate_bpm"] for item in recent], [72, 73])
+        with self.assertRaises(ValueError):
+            get_recent_observations(self.database_path, "P001", limit=0)
+
+    def test_unknown_patients_cannot_receive_observations(self):
+        with self.assertRaises(LookupError):
+            record_observation(
+                self.database_path,
+                **observation_values(patient_id="P999"),
+                assessment={"risk": "Low", "reasons": []},
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

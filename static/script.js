@@ -80,14 +80,39 @@ function hideDashboardError() {
 
 function validatePatientData(data) {
     return data
+        && typeof data.patient_id === "string"
+        && Number.isInteger(data.age)
+        && typeof data.gender === "string"
         && Number.isFinite(data.hr)
         && Number.isFinite(data.spo2)
         && Number.isFinite(data.temp)
         && Number.isFinite(data.health_score)
+        && data.health_score >= 0
+        && data.health_score <= 100
         && Number.isFinite(data.last_updated)
+        && typeof data.observed_at === "string"
+        && Number.isFinite(Date.parse(data.observed_at))
+        && ["F", "C"].includes(data.temperature_unit)
         && ["Low", "Medium", "High"].includes(data.risk)
+        && ["Stable", "Under Observation", "Critical Condition"].includes(data.status)
         && Array.isArray(data.reasons)
-        && typeof data.recommendation === "string";
+        && data.reasons.every(reason => typeof reason === "string")
+        && typeof data.recommendation === "string"
+        && Array.isArray(data.observations)
+        && data.observations.every(observation =>
+            observation
+            && Number.isFinite(observation.id)
+            && Number.isFinite(observation.hr)
+            && Number.isFinite(observation.spo2)
+            && Number.isFinite(observation.temp)
+            && typeof observation.measured_at === "string"
+            && typeof observation.temperature_unit === "string"
+        )
+        && Array.isArray(data.medical_history)
+        && data.medical_history.every(record =>
+            typeof record.record_type === "string"
+            && typeof record.value === "string"
+        );
 }
 
 function addLog(message) {
@@ -191,7 +216,7 @@ async function updateDashboard() {
             patient_id: data.patient_id,
             age: data.age,
             gender: data.gender,
-            time: data.last_updated,
+            time: new Date(data.observed_at).toLocaleString(),
             hr: data.hr,
             bp: data.bp,
             spo2: data.spo2,
@@ -225,13 +250,26 @@ async function updateDashboard() {
             }[data.status] || "";
         }
 
-        hrHistory.push(data.hr);
-        spo2History.push(data.spo2);
-        tempHistory.push(data.temp);
+        const recentObservations = data.observations.slice(-MAX_HISTORY_LENGTH);
+        hrHistory.splice(0, hrHistory.length, ...recentObservations.map(item => item.hr));
+        spo2History.splice(0, spo2History.length, ...recentObservations.map(item => item.spo2));
+        tempHistory.splice(0, tempHistory.length, ...recentObservations.map(item => item.temp));
 
-        if (hrHistory.length > MAX_HISTORY_LENGTH) hrHistory.shift();
-        if (spo2History.length > MAX_HISTORY_LENGTH) spo2History.shift();
-        if (tempHistory.length > MAX_HISTORY_LENGTH) tempHistory.shift();
+        const historyFields = {
+            blood_group: "blood_group",
+            allergies: "allergies",
+            diabetes: "diabetes",
+            hypertension: "hypertension",
+            surgery: "surgery",
+            medicine: "medicine"
+        };
+        data.medical_history.forEach(record => {
+            const fieldId = historyFields[record.record_type];
+            const element = fieldId ? document.getElementById(fieldId) : null;
+            if (element) {
+                element.innerText = record.value;
+            }
+        });
 
         [hrChart, spo2Chart, tempChart].forEach(chart => {
             if (chart) {

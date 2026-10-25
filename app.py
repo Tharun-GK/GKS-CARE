@@ -1,9 +1,18 @@
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 from flask import Flask, jsonify, render_template
 
+from database import initialize_database
+from repository import (
+    get_patient,
+    get_patient_history,
+    get_recent_observations,
+    record_observation,
+    seed_demo_patient,
+)
 from risk_logic import calculate_risk
 
 
@@ -89,9 +98,17 @@ def generate_bp(risk):
     return "165/105"
 
 
-def create_app(dataset_path=None):
+def create_app(dataset_path=None, database_path=None):
     app = Flask(__name__)
     resolved_dataset_path = Path(dataset_path) if dataset_path else DATA_DIRECTORY / "critical.csv"
+    resolved_database_path = (
+        Path(database_path)
+        if database_path
+        else Path(app.instance_path) / "gks-care.sqlite3"
+    )
+    initialize_database(resolved_database_path)
+    seed_demo_patient(resolved_database_path)
+    app.config["DATABASE_PATH"] = str(resolved_database_path)
 
     try:
         patient_dataset = load_dataset(resolved_dataset_path)
@@ -124,21 +141,54 @@ def create_app(dataset_path=None):
             "Medium": "Demo rules detected a changing pattern. Review the measurements with a qualified clinician.",
             "High": "Demo rules detected a concerning pattern. This is not a diagnosis; consult a qualified clinician.",
         }
+        patient_id = "P001"
+        measured_at = datetime.now(timezone.utc)
+        patient = get_patient(resolved_database_path, patient_id)
+        observation = record_observation(
+            resolved_database_path,
+            patient_id=patient_id,
+            measured_at=measured_at,
+            heart_rate_bpm=row["hr"],
+            spo2_percent=row["spo2"],
+            temperature_value=row["temp"],
+            temperature_unit="F",
+            source="synthetic_csv",
+            assessment={"risk": risk, "reasons": reasons},
+        )
+        recent_observations = get_recent_observations(resolved_database_path, patient_id)
 
         data = {
-            "patient_id": "P001",
-            "age": 45,
-            "gender": "Male",
+            "patient_id": patient["patient_id"],
+            "age": patient["age"],
+            "gender": patient["gender"],
+            "data_source": patient["data_source"],
             "last_updated": int(row["time"]),
+            "observed_at": observation["measured_at"],
             "hr": int(row["hr"]),
             "spo2": int(row["spo2"]),
             "temp": float(row["temp"]),
+            "temperature_unit": observation["temperature_unit"],
             "bp": generate_bp(risk),
             "risk": risk,
             "status": get_patient_status(risk),
             "health_score": calculate_health_score(row, risk),
             "reasons": reasons,
             "recommendation": recommendation[risk],
+            "medical_history": get_patient_history(resolved_database_path, patient_id),
+            "observations": [
+                {
+                    "id": item["id"],
+                    "measured_at": item["measured_at"],
+                    "hr": item["heart_rate_bpm"],
+                    "hr_unit": "bpm",
+                    "spo2": item["spo2_percent"],
+                    "spo2_unit": "%",
+                    "temp": item["temperature_value"],
+                    "temperature_unit": item["temperature_unit"],
+                    "source": item["source"],
+                }
+                for item in recent_observations
+            ],
         }
 
         patient_state["previous_row"] = row

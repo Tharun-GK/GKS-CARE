@@ -13,16 +13,36 @@ const samplePatient = {
     patient_id: "P001",
     age: 45,
     gender: "Male",
+    data_source: "synthetic_demo",
     last_updated: 1,
+    observed_at: "2026-01-02T03:04:05Z",
     hr: 112,
     spo2: 89,
     temp: 101.2,
+    temperature_unit: "F",
     bp: "165/105",
     risk: "High",
     status: "Critical Condition",
     health_score: 20,
     reasons: ["Critical oxygen level"],
-    recommendation: "Demo guidance"
+    recommendation: "Demo guidance",
+    observations: [{
+        id: 1,
+        measured_at: "2026-01-02T03:04:05Z",
+        hr: 112,
+        hr_unit: "bpm",
+        spo2: 89,
+        spo2_unit: "%",
+        temp: 101.2,
+        temperature_unit: "F",
+        source: "synthetic_csv"
+    }],
+    medical_history: [{
+        record_type: "allergies",
+        value: "Penicillin",
+        source: "synthetic_demo",
+        updated_at: "2026-01-02T03:04:05Z"
+    }]
 };
 
 function createDashboard({ response, canvases = true, includeChart = true, fetchImpl } = {}) {
@@ -143,6 +163,7 @@ test("successful updates render measurements, statistics, charts, and one risk l
     assert.equal(dashboard.elements.get("avg_temp").innerText, "101.2°F");
     assert.equal(dashboard.elements.get("max_hr").innerText, 112);
     assert.equal(dashboard.elements.get("min_spo2").innerText, "89%");
+    assert.equal(dashboard.context.document.getElementById("allergies").innerText, "Penicillin");
     assert.equal(dashboard.elements.get("dashboardError").hidden, true);
     assert.equal(dashboard.elements.get("alertBanner").style.display, "flex");
     assert.equal(dashboard.elements.get("activityLog").children.length, 1);

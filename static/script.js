@@ -304,24 +304,6 @@ if (logContainer) {
         spo2Chart.update();
         tempChart.update();
 
-        // ===============================
-// Statistics Cards
-// ===============================
-
-document.getElementById("highest_hr").innerText =
-    Math.max(...hrHistory);
-
-document.getElementById("lowest_spo2").innerText =
-    Math.min(...spo2History) + "%";
-
-const avgTemp =
-    tempHistory.reduce((a,b)=>a+b,0) /
-    tempHistory.length;
-
-document.getElementById("avg_temp").innerText =
-    avgTemp.toFixed(1) + "°F";
-
-
         function addLog(message){
 
     const now = new Date();
@@ -411,7 +393,7 @@ setInterval(() => {
     const mins = Math.floor((monitoringSeconds % 3600) / 60);
     const secs = monitoringSeconds % 60;
 
-    document.getElementById("monitoring_time").innerText =
+    document.getElementById("monitor_time").innerText =
         String(hrs).padStart(2,'0') + ":" +
         String(mins).padStart(2,'0') + ":" +
         String(secs).padStart(2,'0');

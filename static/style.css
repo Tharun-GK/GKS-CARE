@@ -70,6 +70,50 @@ h1{
 
 }
 
+.account-controls{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    color:#cbd5e1;
+}
+
+.account-controls form{
+    margin:0;
+}
+
+.account-controls button,
+.login-card button{
+    border:0;
+    border-radius:6px;
+    background:#0284c7;
+    color:#fff;
+    cursor:pointer;
+    padding:9px 14px;
+}
+
+.login-container{
+    max-width:560px;
+    padding-top:12vh;
+}
+
+.login-card{
+    display:grid;
+    gap:12px;
+}
+
+.login-card input{
+    border:1px solid #475569;
+    border-radius:6px;
+    background:#0f172a;
+    color:#fff;
+    font-size:16px;
+    padding:10px;
+}
+
+.login-error{
+    color:#fca5a5;
+}
+
 /* ===========================
 Top Status
 =========================== */

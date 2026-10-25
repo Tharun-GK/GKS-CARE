@@ -1,6 +1,8 @@
 const REFRESH_INTERVAL_MS = 2000;
 const MAX_HISTORY_LENGTH = 15;
 const MAX_ACTIVITY_LOG_ITEMS = 20;
+const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+const csrfToken = csrfMeta ? csrfMeta.content : "";
 
 let hrHistory = [];
 let spo2History = [];
@@ -406,9 +408,14 @@ async function updateDashboard() {
     updateInProgress = true;
 
     try {
-        const response = await fetch(
-            "/patient?patient_id=" + encodeURIComponent(requestedPatientId)
-        );
+        const response = await fetch("/patient/advance", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrfToken
+            },
+            body: JSON.stringify({ patient_id: requestedPatientId })
+        });
         const data = await response.json();
         if (requestedSelectionVersion !== selectionVersion) {
             return;

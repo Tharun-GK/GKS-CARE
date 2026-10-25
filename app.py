@@ -1,9 +1,16 @@
 import math
+import json
+import os
+import re
+import secrets
+import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from database import initialize_database
 from repository import (
@@ -13,12 +20,73 @@ from repository import (
     get_recent_observations,
     record_observation,
     seed_demo_patient,
+    validate_patient_id,
 )
 from risk_logic import RiskThresholds, assess_vitals
 
 
 REQUIRED_COLUMNS = ("time", "hr", "spo2", "temp")
 DATA_DIRECTORY = Path(__file__).resolve().parent / "data"
+USERNAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}\Z")
+PASSWORD_HASH_PATTERN = re.compile(
+    r"(?:scrypt:\d+:\d+:\d+|pbkdf2:sha256:\d+)\$[A-Za-z0-9]+\$[a-f0-9]+\Z"
+)
+AUTH_EXEMPT_ENDPOINTS = {"healthz", "login", "static"}
+
+
+def _load_auth_users(configured_users):
+    if configured_users is None:
+        configured_users = os.environ.get("GKS_CARE_USERS")
+    if isinstance(configured_users, str):
+        try:
+            configured_users = json.loads(configured_users)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("GKS_CARE_USERS must be a JSON object of password hashes.") from error
+    if not isinstance(configured_users, dict) or not configured_users:
+        raise RuntimeError("Configure at least one account in GKS_CARE_USERS.")
+
+    users = {}
+    for username, password_hash in configured_users.items():
+        if (
+            not isinstance(username, str)
+            or not USERNAME_PATTERN.fullmatch(username)
+            or not isinstance(password_hash, str)
+            or not PASSWORD_HASH_PATTERN.fullmatch(password_hash)
+        ):
+            raise RuntimeError(
+                "GKS_CARE_USERS contains an invalid username or invalid password hash."
+            )
+        try:
+            check_password_hash(password_hash, "configuration-validation")
+        except (TypeError, ValueError) as error:
+            raise RuntimeError(
+                f"GKS_CARE_USERS contains an invalid password hash for '{username}'."
+            ) from error
+        users[username] = password_hash
+    return users
+
+
+def _csrf_token():
+    token = session.get("csrf_token")
+    if token is None:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def _csrf_is_valid():
+    expected = session.get("csrf_token")
+    supplied = request.headers.get("X-CSRF-Token")
+    if supplied is None:
+        supplied = request.form.get("csrf_token")
+    return (
+        isinstance(expected, str)
+        and isinstance(supplied, str)
+        and secrets.compare_digest(expected, supplied)
+    )
+
+
+DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_urlsafe(32))
 
 
 class DatasetError(Exception):
@@ -91,8 +159,28 @@ def generate_bp(risk):
     return "165/105"
 
 
-def create_app(dataset_path=None, database_path=None, risk_thresholds=None):
+def create_app(
+    dataset_path=None,
+    database_path=None,
+    risk_thresholds=None,
+    auth_users=None,
+    secret_key=None,
+):
     app = Flask(__name__)
+    resolved_secret_key = secret_key or os.environ.get("GKS_CARE_SECRET_KEY")
+    if not isinstance(resolved_secret_key, str) or len(resolved_secret_key) < 32:
+        raise RuntimeError("Set GKS_CARE_SECRET_KEY to a random value of at least 32 characters.")
+
+    configured_users = _load_auth_users(auth_users)
+    app.secret_key = resolved_secret_key
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=os.environ.get("GKS_CARE_COOKIE_SECURE", "").lower()
+        in {"1", "true", "yes"},
+        PERMANENT_SESSION_LIFETIME=60 * 60 * 8,
+        MAX_CONTENT_LENGTH=1024 * 1024,
+    )
     app.config["RISK_THRESHOLDS"] = RiskThresholds.from_mapping(
         risk_thresholds
     ).__dict__
@@ -106,7 +194,12 @@ def create_app(dataset_path=None, database_path=None, risk_thresholds=None):
     resolved_database_path = (
         Path(database_path)
         if database_path
-        else Path(app.instance_path) / "gks-care.sqlite3"
+        else Path(
+            os.environ.get(
+                "GKS_CARE_DATABASE",
+                Path(app.instance_path) / "gks-care.sqlite3",
+            )
+        )
     )
     initialize_database(resolved_database_path)
     seed_demo_patient(resolved_database_path)
@@ -126,18 +219,96 @@ def create_app(dataset_path=None, database_path=None, risk_thresholds=None):
             patient_datasets[patient_id] = {"dataset": None, "error": error}
         patient_states[patient_id] = {"index": 0, "previous_row": None}
 
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        )
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), geolocation=(), microphone=()",
+        )
+        if request.endpoint not in {"static", "healthz"}:
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.before_request
+    def protect_routes():
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and not _csrf_is_valid():
+            return jsonify({"error": "A valid CSRF token is required."}), 400
+
+        if request.endpoint in AUTH_EXEMPT_ENDPOINTS:
+            return None
+        if "username" in session:
+            return None
+        if request.path.startswith("/patient") or request.path == "/patients":
+            return jsonify({"error": "Authentication is required."}), 401
+        return redirect(url_for("login"))
+
+    @app.route("/healthz")
+    def healthz():
+        try:
+            with closing(sqlite3.connect(resolved_database_path)) as connection:
+                connection.execute("SELECT 1").fetchone()
+        except sqlite3.Error:
+            app.logger.exception("Application health check failed.")
+            return jsonify({"status": "unavailable"}), 503
+        return jsonify({"status": "ok"})
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if request.method == "GET":
+            return render_template("login.html", csrf_token=_csrf_token(), error=None)
+
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        password_hash = configured_users.get(username, DUMMY_PASSWORD_HASH)
+        password_matches = (
+            isinstance(password, str)
+            and check_password_hash(password_hash, password)
+        )
+        if username not in configured_users or not password_matches:
+            return (
+                render_template(
+                    "login.html",
+                    csrf_token=_csrf_token(),
+                    error="Username or password is incorrect.",
+                ),
+                401,
+            )
+
+        session.clear()
+        session["username"] = username
+        session.permanent = True
+        _csrf_token()
+        return redirect(url_for("dashboard"))
+
+    @app.route("/logout", methods=["POST"])
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
     @app.route("/")
     def dashboard():
-        return render_template("dashboard.html")
+        return render_template(
+            "dashboard.html",
+            csrf_token=_csrf_token(),
+            username=session["username"],
+        )
 
     @app.route("/patients")
     def patients():
         return jsonify({"patients": get_patients(resolved_database_path)})
 
-    @app.route("/patient")
-    def patient():
-        patient_id = request.args.get("patient_id", "P001")
+    def patient_data(patient_id, advance):
         try:
+            patient_id = validate_patient_id(patient_id)
             patient = get_patient(resolved_database_path, patient_id)
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
@@ -173,18 +344,21 @@ def create_app(dataset_path=None, database_path=None, risk_thresholds=None):
 
         risk = risk_assessment.risk
         reasons = risk_assessment.reasons
-        measured_at = datetime.now(timezone.utc)
-        observation = record_observation(
-            resolved_database_path,
-            patient_id=patient_id,
-            measured_at=measured_at,
-            heart_rate_bpm=row["hr"],
-            spo2_percent=row["spo2"],
-            temperature_value=row["temp"],
-            temperature_unit="F",
-            source="synthetic_csv",
-            assessment=risk_assessment.to_dict(),
-        )
+        observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        if advance:
+            observation = record_observation(
+                resolved_database_path,
+                patient_id=patient_id,
+                measured_at=datetime.now(timezone.utc),
+                heart_rate_bpm=row["hr"],
+                spo2_percent=row["spo2"],
+                temperature_value=row["temp"],
+                temperature_unit="F",
+                source="synthetic_csv",
+                assessment=risk_assessment.to_dict(),
+                actor=session["username"],
+            )
+            observed_at = observation["measured_at"]
         recent_observations = get_recent_observations(resolved_database_path, patient_id)
 
         data = {
@@ -193,11 +367,11 @@ def create_app(dataset_path=None, database_path=None, risk_thresholds=None):
             "gender": patient["gender"],
             "data_source": patient["data_source"],
             "last_updated": int(row["time"]),
-            "observed_at": observation["measured_at"],
+            "observed_at": observed_at,
             "hr": int(row["hr"]),
             "spo2": int(row["spo2"]),
             "temp": float(row["temp"]),
-            "temperature_unit": observation["temperature_unit"],
+            "temperature_unit": "F",
             "bp": generate_bp(risk),
             "risk": risk,
             "status": risk_assessment.status,
@@ -222,10 +396,23 @@ def create_app(dataset_path=None, database_path=None, risk_thresholds=None):
             ],
         }
 
-        patient_state["previous_row"] = row
-        patient_state["index"] += 1
+        if advance:
+            patient_state["previous_row"] = row
+            patient_state["index"] += 1
 
         return jsonify(data)
+
+    @app.route("/patient")
+    def patient():
+        return patient_data(request.args.get("patient_id", "P001"), advance=False)
+
+    @app.route("/patient/advance", methods=["POST"])
+    def advance_patient():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "A JSON object is required."}), 400
+        patient_id = payload.get("patient_id", "P001")
+        return patient_data(patient_id, advance=True)
 
     return app
 
@@ -234,4 +421,10 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    from waitress import serve
+
+    serve(
+        app,
+        host="127.0.0.1",
+        port=int(os.environ.get("PORT", "5000")),
+    )

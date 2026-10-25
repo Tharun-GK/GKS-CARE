@@ -69,6 +69,13 @@ const samplePatients = [
     { patient_id: "P003", age: 62, gender: "Male", data_source: "synthetic_demo" }
 ];
 
+function getRequestedPatientId(url, options) {
+    if (options && options.body) {
+        return JSON.parse(options.body).patient_id;
+    }
+    return new URL(url, "http://localhost").searchParams.get("patient_id");
+}
+
 function patientResponse(patientId) {
     if (patientId === "P001") {
         return samplePatient;
@@ -160,8 +167,14 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
     const scheduledTimeouts = [];
     const scheduledIntervals = [];
     const consoleErrors = [];
+    const requests = [];
 
     const document = {
+        querySelector(selector) {
+            return selector === 'meta[name="csrf-token"]'
+                ? { content: "test-csrf-token" }
+                : null;
+        },
         getElementById(id) {
             if (!canvases && ["hrChart", "spo2Chart", "tempChart"].includes(id)) {
                 return null;
@@ -213,7 +226,8 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
         setTimeout(callback, delay) {
             scheduledTimeouts.push({ callback, delay });
         },
-        fetch: async url => {
+        fetch: async (url, options) => {
+            requests.push({ url, options });
             if (url === "/patients") {
                 return {
                     ok: true,
@@ -222,7 +236,7 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
                 };
             }
             if (fetchImpl) {
-                return fetchImpl(url);
+                return fetchImpl(url, options);
             }
             return response || {
                 ok: true,
@@ -246,6 +260,7 @@ function createDashboard({ response, canvases = true, includeChart = true, fetch
         scheduledTimeouts,
         scheduledIntervals,
         consoleErrors,
+        requests,
         async settle() {
             for (let turn = 0; turn < 4; turn++) {
                 await new Promise(resolve => setImmediate(resolve));
@@ -269,6 +284,15 @@ test("successful updates render measurements, statistics, charts, and one risk l
     assert.equal(dashboard.elements.get("activityLog").children.length, 1);
     assert.equal(dashboard.charts.length, 3);
     assert.equal(dashboard.charts.every(chart => chart.updateCount === 1), true);
+    const advanceRequest = dashboard.requests.find(
+        request => request.url === "/patient/advance"
+    );
+    assert.equal(advanceRequest.options.method, "POST");
+    assert.equal(advanceRequest.options.headers["X-CSRF-Token"], "test-csrf-token");
+    assert.deepEqual(
+        JSON.parse(advanceRequest.options.body),
+        { patient_id: "P001" }
+    );
     assert.equal(dashboard.scheduledTimeouts.length, 1);
     assert.equal(dashboard.scheduledTimeouts[0].delay, 2000);
 
@@ -429,8 +453,8 @@ test("overlapping refresh calls are ignored while a request is in flight", async
 
 test("changing patient clears prior data and loads isolated patient metrics/history", async () => {
     const dashboard = createDashboard({
-        fetchImpl: async url => {
-            const patientId = new URL(url, "http://localhost").searchParams.get("patient_id");
+        fetchImpl: async (url, options) => {
+            const patientId = getRequestedPatientId(url, options);
             return {
                 ok: true,
                 status: 200,
@@ -460,8 +484,8 @@ test("changing patient clears prior data and loads isolated patient metrics/hist
 test("stale patient response cannot overwrite a newly selected patient", async () => {
     let resolveP001;
     const dashboard = createDashboard({
-        fetchImpl: url => {
-            const patientId = new URL(url, "http://localhost").searchParams.get("patient_id");
+        fetchImpl: (url, options) => {
+            const patientId = getRequestedPatientId(url, options);
             if (patientId === "P001") {
                 return new Promise(resolve => {
                     resolveP001 = resolve;
@@ -497,8 +521,8 @@ test("stale patient response cannot overwrite a newly selected patient", async (
 test("stale failed patient response cannot mark a newly selected patient unavailable", async () => {
     let rejectP001;
     const dashboard = createDashboard({
-        fetchImpl: url => {
-            const patientId = new URL(url, "http://localhost").searchParams.get("patient_id");
+        fetchImpl: (url, options) => {
+            const patientId = getRequestedPatientId(url, options);
             if (patientId === "P001") {
                 return new Promise((resolve, reject) => {
                     rejectP001 = reject;

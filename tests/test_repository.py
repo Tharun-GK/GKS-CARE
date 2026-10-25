@@ -2,7 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from database import initialize_database, transaction
+from database import (
+    backup_database,
+    initialize_database,
+    restore_database,
+    transaction,
+)
 from repository import (
     get_audit_events,
     get_patient,
@@ -160,6 +165,48 @@ class PatientRepositoryTests(unittest.TestCase):
                 **observation_values(patient_id="P999"),
                 assessment={"risk": "Low", "reasons": []},
             )
+
+    def test_backup_and_restore_preserve_schema_observations_and_audit(self):
+        record_observation(
+            self.database_path,
+            **observation_values(),
+            assessment={"risk": "Low", "reasons": []},
+            actor="backup-test",
+        )
+        backup_path = self.database_path.parent / "backup.sqlite3"
+        restored_path = self.database_path.parent / "restored.sqlite3"
+
+        self.assertEqual(backup_database(self.database_path, backup_path), backup_path)
+        self.assertEqual(restore_database(backup_path, restored_path), restored_path)
+
+        with transaction(restored_path) as connection:
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            version = connection.execute(
+                "SELECT version FROM schema_migrations"
+            ).fetchone()["version"]
+            audit = connection.execute(
+                "SELECT details_json FROM audit_events "
+                "WHERE event_type = 'observation_recorded'"
+            ).fetchone()
+
+        self.assertEqual(integrity, "ok")
+        self.assertEqual(version, 1)
+        self.assertEqual(len(get_recent_observations(restored_path, "P001")), 1)
+        self.assertIn("backup-test", audit["details_json"])
+        self.assertEqual(len(get_audit_events(restored_path, "P001")), 2)
+
+    def test_backup_and_restore_refuse_to_overwrite_existing_files(self):
+        backup_path = self.database_path.parent / "backup.sqlite3"
+        restored_path = self.database_path.parent / "restored.sqlite3"
+        backup_database(self.database_path, backup_path)
+        with self.assertRaises(FileExistsError):
+            backup_database(self.database_path, backup_path)
+        with self.assertRaises(FileExistsError):
+            restore_database(backup_path, self.database_path)
+        with self.assertRaises(ValueError):
+            backup_database(self.database_path, self.database_path)
+        with self.assertRaises(FileNotFoundError):
+            backup_database(self.database_path.parent / "missing.sqlite3", restored_path)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,17 @@
+import json
+import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from werkzeug.security import generate_password_hash
+
+os.environ["GKS_CARE_SECRET_KEY"] = "test-secret-key-with-at-least-thirty-two-characters"
+os.environ["GKS_CARE_USERS"] = json.dumps(
+    {"test-user": generate_password_hash("test-password")}
+)
 
 from app import create_app
 from repository import get_audit_events, get_recent_observations
@@ -23,6 +34,37 @@ class PatientApiTests(unittest.TestCase):
         app = create_app(self.dataset_path, self.database_path)
         app.config["TESTING"] = True
         self.client = app.test_client()
+        self.csrf_token = self._login()
+
+    def _login(self):
+        response = self.client.get("/login")
+        self.assertEqual(response.status_code, 200)
+        csrf_token = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            response.get_data(as_text=True),
+        ).group(1)
+        response = self.client.post(
+            "/login",
+            data={
+                "username": "test-user",
+                "password": "test-password",
+                "csrf_token": csrf_token,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        dashboard = self.client.get("/")
+        self.assertEqual(dashboard.status_code, 200)
+        return re.search(
+            r'<meta name="csrf-token" content="([^"]+)"',
+            dashboard.get_data(as_text=True),
+        ).group(1)
+
+    def advance_patient(self, patient_id="P001"):
+        return self.client.post(
+            "/patient/advance",
+            json={"patient_id": patient_id},
+            headers={"X-CSRF-Token": self.csrf_token},
+        )
 
     def test_dashboard_renders_existing_sections_and_demo_notice(self):
         response = self.client.get("/")
@@ -51,10 +93,21 @@ class PatientApiTests(unittest.TestCase):
 
         self.assertIn("Synthetic measurements", page)
         self.assertIn("not a trained or clinically validated AI model", page)
+        self.assertIn('name="csrf-token"', page)
+        self.assertIn("test-user", page)
+        self.assertIn("chart.js@4.4.7", page)
+        self.assertIn(
+            "integrity=\"sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC\"",
+            page,
+        )
         self.assertNotIn('id="emergencyBanner"', page)
 
     def test_patient_endpoint_returns_expected_vitals_and_assessment(self):
-        response = self.client.get("/patient")
+        response = self.client.post(
+            "/patient/advance",
+            json={"patient_id": "P001"},
+            headers={"X-CSRF-Token": self.csrf_token},
+        )
 
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
@@ -100,8 +153,23 @@ class PatientApiTests(unittest.TestCase):
             audit_event["details"]["risk_assessment"]["method"],
             "deterministic_demo_rules",
         )
+        self.assertEqual(audit_event["details"]["actor"], "test-user")
         self.assertEqual(len(data["medical_history"]), 6)
         self.assertNotIn("confidence", data)
+
+    def test_patient_get_is_read_only_and_preserves_the_response_contract(self):
+        first = self.client.get("/patient")
+        second = self.client.get("/patient")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.get_json()["hr"], second.get_json()["hr"])
+        self.assertEqual(first.get_json()["risk"], second.get_json()["risk"])
+        self.assertEqual(first.get_json()["observations"], [])
+        self.assertEqual(
+            get_audit_events(self.database_path, "P001")[-1]["event_type"],
+            "synthetic_patient_seeded",
+        )
 
     def test_patient_list_returns_all_seeded_synthetic_profiles(self):
         response = self.client.get("/patients")
@@ -117,10 +185,10 @@ class PatientApiTests(unittest.TestCase):
         )
 
     def test_patient_selection_isolated_for_datasets_history_and_observations(self):
-        p002 = self.client.get("/patient?patient_id=P002").get_json()
-        p001 = self.client.get("/patient?patient_id=P001").get_json()
-        p003 = self.client.get("/patient?patient_id=P003").get_json()
-        p002_again = self.client.get("/patient?patient_id=P002").get_json()
+        p002 = self.advance_patient("P002").get_json()
+        p001 = self.advance_patient("P001").get_json()
+        p003 = self.advance_patient("P003").get_json()
+        p002_again = self.advance_patient("P002").get_json()
 
         self.assertEqual((p001["hr"], p002["hr"], p003["hr"]), (80, 85, 78))
         self.assertEqual(p002_again["hr"], 90)
@@ -152,9 +220,9 @@ class PatientApiTests(unittest.TestCase):
         )
 
     def test_patient_endpoint_advances_and_restarts_simulation(self):
-        first = self.client.get("/patient").get_json()
-        second = self.client.get("/patient").get_json()
-        third = self.client.get("/patient").get_json()
+        first = self.advance_patient().get_json()
+        second = self.advance_patient().get_json()
+        third = self.advance_patient().get_json()
 
         self.assertEqual((first["hr"], second["hr"], third["hr"]), (80, 105, 80))
         self.assertEqual(second["risk"], "Medium")
@@ -169,8 +237,14 @@ class PatientApiTests(unittest.TestCase):
         )
         app = create_app(invalid_path, self.database_path)
         app.config["TESTING"] = True
+        invalid_client = app.test_client()
+        csrf_token = self._login_for(invalid_client)
 
-        response = app.test_client().get("/patient")
+        response = invalid_client.post(
+            "/patient/advance",
+            json={"patient_id": "P001"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
         data = response.get_json()
 
         self.assertEqual(response.status_code, 422)
@@ -192,7 +266,14 @@ class PatientApiTests(unittest.TestCase):
         )
         app.config["TESTING"] = True
 
-        data = app.test_client().get("/patient").get_json()
+        test_client = app.test_client()
+        csrf_token = self._login_for(test_client)
+        response = test_client.post(
+            "/patient/advance",
+            json={"patient_id": "P001"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        data = response.get_json()
 
         self.assertEqual(data["risk"], "Medium")
         self.assertEqual(data["status"], "Demo Review Suggested")
@@ -201,6 +282,133 @@ class PatientApiTests(unittest.TestCase):
             data["risk_assessment"]["factors"][0]["code"],
             "spo2_demo_medium",
         )
+
+    def _login_for(self, test_client):
+        response = test_client.get("/login")
+        token = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            response.get_data(as_text=True),
+        ).group(1)
+        test_client.post(
+            "/login",
+            data={
+                "username": "test-user",
+                "password": "test-password",
+                "csrf_token": token,
+            },
+        )
+        dashboard = test_client.get("/")
+        return re.search(
+            r'<meta name="csrf-token" content="([^"]+)"',
+            dashboard.get_data(as_text=True),
+        ).group(1)
+
+    def test_protected_routes_require_login_and_posts_require_csrf(self):
+        app = create_app(self.dataset_path, self.database_path)
+        app.config["TESTING"] = True
+        anonymous_client = app.test_client()
+
+        self.assertEqual(anonymous_client.get("/").status_code, 302)
+        self.assertEqual(anonymous_client.get("/patients").status_code, 401)
+        self.assertEqual(anonymous_client.get("/patient").status_code, 401)
+        self.assertEqual(anonymous_client.get("/healthz").status_code, 200)
+        self.assertEqual(
+            self.client.post("/patient/advance", json={"patient_id": "P001"}).status_code,
+            400,
+        )
+
+    def test_advance_rejects_missing_csrf_and_malformed_json_without_writing(self):
+        missing_csrf = self.client.post(
+            "/patient/advance",
+            json={"patient_id": "P001"},
+        )
+        malformed_json = self.client.post(
+            "/patient/advance",
+            data="{",
+            content_type="application/json",
+            headers={"X-CSRF-Token": self.csrf_token},
+        )
+
+        self.assertEqual(missing_csrf.status_code, 400)
+        self.assertEqual(
+            missing_csrf.get_json(),
+            {"error": "A valid CSRF token is required."},
+        )
+        self.assertEqual(malformed_json.status_code, 400)
+        self.assertEqual(malformed_json.get_json(), {"error": "A JSON object is required."})
+        self.assertEqual(get_recent_observations(self.database_path, "P001"), [])
+
+    def test_invalid_login_and_logout_are_controlled_and_csrf_protected(self):
+        anonymous_client = create_app(
+            self.dataset_path,
+            self.database_path,
+        ).test_client()
+        login_page = anonymous_client.get("/login").get_data(as_text=True)
+        csrf_token = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            login_page,
+        ).group(1)
+        invalid_login = anonymous_client.post(
+            "/login",
+            data={
+                "username": "test-user",
+                "password": "incorrect",
+                "csrf_token": csrf_token,
+            },
+        )
+        self.assertEqual(invalid_login.status_code, 401)
+        self.assertIn("Username or password is incorrect.", invalid_login.get_data(as_text=True))
+        self.assertEqual(self.client.post("/logout").status_code, 400)
+        self.assertEqual(
+            self.client.post(
+                "/logout",
+                data={"csrf_token": self.csrf_token},
+            ).status_code,
+            302,
+        )
+        self.assertEqual(self.client.get("/patients").status_code, 401)
+
+    def test_security_headers_and_sensitive_api_cache_policy(self):
+        response = self.client.get("/patient")
+        dashboard = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn("default-src 'self'", response.headers["Content-Security-Policy"])
+        self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(response.headers["X-Frame-Options"], "DENY")
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(dashboard.headers["Cache-Control"], "no-store")
+
+    def test_authentication_configuration_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "GKS_CARE_SECRET_KEY"):
+            create_app(
+                self.dataset_path,
+                self.database_path,
+                secret_key="short",
+                auth_users={"test-user": generate_password_hash("test-password")},
+            )
+
+    def test_invalid_account_hash_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "invalid password hash"):
+            create_app(
+                self.dataset_path,
+                self.database_path,
+                secret_key="test-secret-key-with-at-least-thirty-two-characters",
+                auth_users={"test-user": "not-a-password-hash"},
+            )
+
+    def test_database_path_can_be_selected_for_restore(self):
+        restored_path = Path(self.temp_directory.name) / "restored.sqlite3"
+        with patch.dict(os.environ, {"GKS_CARE_DATABASE": str(restored_path)}):
+            app = create_app(
+                self.dataset_path,
+                secret_key="test-secret-key-with-at-least-thirty-two-characters",
+                auth_users={"test-user": generate_password_hash("test-password")},
+            )
+
+        self.assertEqual(app.config["DATABASE_PATH"], str(restored_path))
+        self.assertTrue(restored_path.is_file())
 
     def test_invalid_risk_threshold_configuration_fails_at_startup(self):
         with self.assertRaisesRegex(ValueError, "below its medium threshold"):
@@ -214,23 +422,39 @@ class PatientApiTests(unittest.TestCase):
             )
 
     def test_observations_persist_across_app_restarts(self):
-        self.client.get("/patient")
+        self.advance_patient()
 
         restarted_app = create_app(self.dataset_path, self.database_path)
         restarted_app.config["TESTING"] = True
-        response = restarted_app.test_client().get("/patient")
+        restarted_client = restarted_app.test_client()
+        csrf_token = self._login_for(restarted_client)
+        response = restarted_client.get("/patient")
         data = response.get_json()
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(data["observations"]), 2)
-        self.assertEqual([item["hr"] for item in data["observations"]], [80, 80])
+        self.assertEqual(len(data["observations"]), 1)
+        self.assertEqual([item["hr"] for item in data["observations"]], [80])
+        self.assertEqual(
+            restarted_client.post(
+                "/patient/advance",
+                json={"patient_id": "P001"},
+                headers={"X-CSRF-Token": csrf_token},
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            len(restarted_client.get("/patient").get_json()["observations"]),
+            2,
+        )
 
     def test_missing_dataset_returns_controlled_service_error(self):
         missing_path = Path(self.temp_directory.name) / "missing.csv"
         app = create_app(missing_path, self.database_path)
         app.config["TESTING"] = True
+        client = app.test_client()
+        self._login_for(client)
 
-        response = app.test_client().get("/patient")
+        response = client.get("/patient")
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(
@@ -252,8 +476,10 @@ class PatientApiTests(unittest.TestCase):
                 path.write_text(contents, encoding="utf-8")
                 app = create_app(path, self.database_path)
                 app.config["TESTING"] = True
+                client = app.test_client()
+                self._login_for(client)
 
-                response = app.test_client().get("/patient")
+                response = client.get("/patient")
 
                 self.assertEqual(response.status_code, 503)
                 self.assertEqual(

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in · GKS-CARE</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="container login-container">
+        <h1>GKS-CARE</h1>
+        <p class="subtitle">Sign in to the synthetic demonstration dashboard</p>
+        <form class="card login-card" method="post" action="{{ url_for('login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" required>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password"
+                   autocomplete="current-password" required>
+            {% if error %}
+            <p class="login-error" role="alert">{{ error }}</p>
+            {% endif %}
+            <button type="submit">Sign in</button>
+            <p class="assessment-note">
+                Synthetic data only. Not for clinical use.
+            </p>
+        </form>
+    </main>
+</body>
+</html>

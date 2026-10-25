@@ -238,6 +238,7 @@ def record_observation(
     temperature_unit,
     source,
     assessment,
+    actor="system",
 ):
     observation = validate_observation(
         patient_id,
@@ -288,6 +289,7 @@ def record_observation(
             "risk": assessment["risk"],
             "reasons": assessment["reasons"],
             "source": observation["source"],
+            "actor": actor,
         }
         if "method" in assessment:
             audit_details["risk_assessment"] = assessment

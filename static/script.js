@@ -81,6 +81,24 @@ function hideDashboardError() {
     }
 }
 
+function validateRiskAssessment(assessment) {
+    return assessment
+        && assessment.method === "deterministic_demo_rules"
+        && typeof assessment.risk === "string"
+        && typeof assessment.severity === "string"
+        && typeof assessment.status === "string"
+        && typeof assessment.next_step === "string"
+        && assessment.data_quality
+        && typeof assessment.data_quality.status === "string"
+        && Array.isArray(assessment.factors)
+        && assessment.factors.every(factor =>
+            factor
+            && typeof factor.code === "string"
+            && typeof factor.label === "string"
+            && typeof factor.affects_risk === "boolean"
+        );
+}
+
 function validatePatientData(data) {
     return data
         && typeof data.patient_id === "string"
@@ -97,7 +115,13 @@ function validatePatientData(data) {
         && Number.isFinite(Date.parse(data.observed_at))
         && ["F", "C"].includes(data.temperature_unit)
         && ["Low", "Medium", "High"].includes(data.risk)
-        && ["Stable", "Under Observation", "Critical Condition"].includes(data.status)
+        && [
+            "No Demo Threshold Flagged",
+            "Demo Review Suggested",
+            "Demo High Pattern — Review"
+        ].includes(data.status)
+        && validateRiskAssessment(data.risk_assessment)
+        && data.risk_assessment.risk === data.risk
         && Array.isArray(data.reasons)
         && data.reasons.every(reason => typeof reason === "string")
         && typeof data.recommendation === "string"
@@ -150,7 +174,8 @@ function updateRiskStatus(data) {
         risk.style.color = {
             Low: "#00ff88",
             Medium: "#ffd000",
-            High: "#ff3b3b"
+            High: "#ff3b3b",
+            Unavailable: "#94a3b8"
         }[data.risk];
     }
 
@@ -163,11 +188,60 @@ function updateRiskStatus(data) {
         const messages = {
             Low: "Demo rules report no threshold flagged",
             Medium: "Demo rules flagged a moderate pattern",
-            High: "Demo rules flagged a high-risk pattern"
+            High: "Demo rules flagged a high-risk pattern",
+            Unavailable: "Demo assessment unavailable"
         };
         addLog(messages[data.risk]);
         lastLoggedRisk = data.risk;
     }
+}
+
+function renderUnavailableAssessment(payload) {
+    const assessment = payload.risk_assessment;
+    const factors = assessment.factors.map(factor => factor.label);
+    const displayFields = {
+        hr: "--",
+        bp: "--",
+        spo2: "--",
+        temp: "--",
+        time: "--",
+        health_score: "--",
+        status: assessment.status,
+        risk: assessment.risk,
+        reason: factors.join(", "),
+        recommendation: assessment.next_step,
+        max_hr: "--",
+        min_spo2: "--",
+        avg_temp: "--"
+    };
+    Object.entries(displayFields).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.innerText = value;
+        }
+    });
+
+    const healthBar = document.getElementById("health_bar");
+    if (healthBar) {
+        healthBar.style.width = "0";
+    }
+    const status = document.getElementById("status");
+    if (status) {
+        status.style.color = "#94a3b8";
+    }
+    updateRiskStatus({ risk: "Unavailable" });
+
+    hrHistory.length = 0;
+    spo2History.length = 0;
+    tempHistory.length = 0;
+    [hrChart, spo2Chart, tempChart].forEach(chart => {
+        if (chart) {
+            chart.data.datasets[0].data = [];
+            chart.update();
+        }
+    });
+
+    showDashboardError(payload.error || assessment.next_step);
 }
 
 function updateStatistics() {
@@ -335,14 +409,23 @@ async function updateDashboard() {
         const response = await fetch(
             "/patient?patient_id=" + encodeURIComponent(requestedPatientId)
         );
-        if (!response.ok) {
-            throw new Error("Patient endpoint returned HTTP " + response.status);
-        }
-
         const data = await response.json();
         if (requestedSelectionVersion !== selectionVersion) {
             return;
         }
+        if (
+            response.status === 422
+            && data
+            && validateRiskAssessment(data.risk_assessment)
+            && data.risk_assessment.risk === "Unavailable"
+        ) {
+            renderUnavailableAssessment(data);
+            return;
+        }
+        if (!response.ok) {
+            throw new Error("Patient endpoint returned HTTP " + response.status);
+        }
+
         if (!validatePatientData(data) || data.patient_id !== requestedPatientId) {
             throw new Error("Patient endpoint returned an invalid response.");
         }
@@ -381,9 +464,9 @@ async function updateDashboard() {
         const status = document.getElementById("status");
         if (status) {
             status.style.color = {
-                Stable: "#00ff88",
-                "Under Observation": "#ffd000",
-                "Critical Condition": "#ff3b3b"
+                "No Demo Threshold Flagged": "#00ff88",
+                "Demo Review Suggested": "#ffd000",
+                "Demo High Pattern — Review": "#ff3b3b"
             }[data.status] || "";
         }
 
@@ -416,10 +499,28 @@ async function updateDashboard() {
 
         updateStatistics();
     } catch (error) {
+        if (requestedSelectionVersion !== selectionVersion) {
+            return;
+        }
         console.error("Dashboard update failed:", error);
-        showDashboardError(
-            "Live measurements are unavailable. Displayed readings may be out of date; retrying automatically."
-        );
+        const message =
+            "Live measurements are unavailable. Displayed readings may be out of date; retrying automatically.";
+        renderUnavailableAssessment({
+            error: message,
+            risk_assessment: {
+                risk: "Unavailable",
+                severity: "unknown",
+                status: "Assessment Unavailable",
+                method: "deterministic_demo_rules",
+                factors: [{
+                    code: "data_quality",
+                    label: "No current valid assessment is available.",
+                    affects_risk: true
+                }],
+                next_step: "Check data availability before interpreting this demonstration.",
+                data_quality: { status: "unavailable" }
+            }
+        });
     } finally {
         updateInProgress = false;
         setTimeout(updateDashboard, REFRESH_INTERVAL_MS);

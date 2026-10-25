@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from app import create_app
+from repository import get_audit_events, get_recent_observations
 
 
 VALID_CSV = """time,hr,spo2,bp,temp
@@ -76,6 +77,7 @@ class PatientApiTests(unittest.TestCase):
                 "health_score",
                 "reasons",
                 "recommendation",
+                "risk_assessment",
                 "medical_history",
                 "observations",
             },
@@ -84,12 +86,20 @@ class PatientApiTests(unittest.TestCase):
         self.assertEqual(data["data_source"], "synthetic_demo")
         self.assertEqual(data["temperature_unit"], "F")
         self.assertEqual(data["risk"], "Low")
-        self.assertEqual(data["status"], "Stable")
+        self.assertEqual(data["status"], "No Demo Threshold Flagged")
         self.assertIsInstance(data["reasons"], list)
         self.assertIsInstance(data["health_score"], int)
+        self.assertEqual(data["risk_assessment"]["method"], "deterministic_demo_rules")
+        self.assertFalse(data["risk_assessment"]["clinically_validated"])
+        self.assertEqual(data["risk_assessment"]["data_quality"]["status"], "complete")
         self.assertEqual(len(data["observations"]), 1)
         self.assertEqual(data["observations"][0]["hr"], data["hr"])
         self.assertEqual(data["observations"][0]["temperature_unit"], "F")
+        audit_event = get_audit_events(self.database_path, "P001")[-1]
+        self.assertEqual(
+            audit_event["details"]["risk_assessment"]["method"],
+            "deterministic_demo_rules",
+        )
         self.assertEqual(len(data["medical_history"]), 6)
         self.assertNotIn("confidence", data)
 
@@ -148,7 +158,60 @@ class PatientApiTests(unittest.TestCase):
 
         self.assertEqual((first["hr"], second["hr"], third["hr"]), (80, 105, 80))
         self.assertEqual(second["risk"], "Medium")
+        self.assertEqual(second["status"], "Demo Review Suggested")
         self.assertEqual(len(third["observations"]), 3)
+
+    def test_invalid_vitals_return_unavailable_assessment_without_persisting(self):
+        invalid_path = Path(self.temp_directory.name) / "invalid_range.csv"
+        invalid_path.write_text(
+            "time,hr,spo2,temp\n1,80,101,98.4\n",
+            encoding="utf-8",
+        )
+        app = create_app(invalid_path, self.database_path)
+        app.config["TESTING"] = True
+
+        response = app.test_client().get("/patient")
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(data["risk_assessment"]["risk"], "Unavailable")
+        self.assertEqual(
+            data["risk_assessment"]["data_quality"]["status"],
+            "incomplete_or_invalid",
+        )
+        self.assertEqual(
+            get_recent_observations(self.database_path, "P001"),
+            [],
+        )
+
+    def test_risk_threshold_configuration_is_applied_to_assessment_and_health_score(self):
+        app = create_app(
+            self.dataset_path,
+            self.database_path,
+            risk_thresholds={"spo2_medium_below": 99},
+        )
+        app.config["TESTING"] = True
+
+        data = app.test_client().get("/patient").get_json()
+
+        self.assertEqual(data["risk"], "Medium")
+        self.assertEqual(data["status"], "Demo Review Suggested")
+        self.assertEqual(data["health_score"], 90)
+        self.assertEqual(
+            data["risk_assessment"]["factors"][0]["code"],
+            "spo2_demo_medium",
+        )
+
+    def test_invalid_risk_threshold_configuration_fails_at_startup(self):
+        with self.assertRaisesRegex(ValueError, "below its medium threshold"):
+            create_app(
+                self.dataset_path,
+                self.database_path,
+                risk_thresholds={
+                    "spo2_high_below": 96,
+                    "spo2_medium_below": 95,
+                },
+            )
 
     def test_observations_persist_across_app_restarts(self):
         self.client.get("/patient")

@@ -134,6 +134,7 @@ class PatientRepositoryTests(unittest.TestCase):
         self.assertEqual(events[-1]["event_type"], "observation_recorded")
         self.assertEqual(events[-1]["details"]["risk"], "Medium")
         self.assertEqual(events[-1]["details"]["reasons"], ["Oxygen dropping"])
+        self.assertNotIn("risk_assessment", events[-1]["details"])
 
     def test_recent_observations_are_limited_and_chronological(self):
         for day in (3, 1, 2):

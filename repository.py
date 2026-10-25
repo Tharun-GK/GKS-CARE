@@ -283,17 +283,20 @@ def record_observation(
         )
         observation["id"] = result.lastrowid
 
+        audit_details = {
+            "observation_id": observation["id"],
+            "risk": assessment["risk"],
+            "reasons": assessment["reasons"],
+            "source": observation["source"],
+        }
+        if "method" in assessment:
+            audit_details["risk_assessment"] = assessment
         _insert_audit_event(
             connection,
             observation["patient_id"],
             "observation_recorded",
             occurred_at,
-            {
-                "observation_id": observation["id"],
-                "risk": assessment["risk"],
-                "reasons": assessment["reasons"],
-                "source": observation["source"],
-            },
+            audit_details,
         )
 
     return observation

@@ -22,10 +22,28 @@ const samplePatient = {
     temperature_unit: "F",
     bp: "165/105",
     risk: "High",
-    status: "Critical Condition",
+    status: "Demo High Pattern — Review",
     health_score: 20,
     reasons: ["Critical oxygen level"],
     recommendation: "Demo guidance",
+    risk_assessment: {
+        risk: "High",
+        severity: "high",
+        status: "Demo High Pattern — Review",
+        method: "deterministic_demo_rules",
+        factors: [{
+            code: "spo2_demo_high",
+            label: "Critical oxygen level",
+            observed_value: 89,
+            threshold: 92,
+            unit: "%",
+            affects_risk: true
+        }],
+        next_step: "Demo guidance",
+        data_quality: { status: "complete" },
+        threshold_source: "inherited_demo_configuration_not_clinical_guidance",
+        clinically_validated: false
+    },
     observations: [{
         id: 1,
         measured_at: "2026-01-02T03:04:05Z",
@@ -70,10 +88,17 @@ function patientResponse(patientId) {
         temp,
         bp: "120/80",
         risk: "Low",
-        status: "Stable",
+        status: "No Demo Threshold Flagged",
         health_score: 100,
         reasons: [],
         recommendation: "Demo guidance",
+        risk_assessment: {
+            ...samplePatient.risk_assessment,
+            risk: "Low",
+            severity: "low",
+            status: "No Demo Threshold Flagged",
+            factors: []
+        },
         observations: [{
             ...samplePatient.observations[0],
             id: isModerate ? 2 : 3,
@@ -269,12 +294,48 @@ test("failed requests show a controlled error and keep empty statistics finite",
 
     assert.equal(dashboard.elements.get("dashboardError").hidden, false);
     assert.match(dashboard.elements.get("dashboardError").innerText, /may be out of date/);
+    assert.equal(dashboard.elements.get("risk").innerText, "Unavailable");
+    assert.equal(dashboard.elements.get("status").innerText, "Assessment Unavailable");
     assert.equal(dashboard.context.document.getElementById("max_hr").innerText, "--");
     assert.equal(dashboard.context.document.getElementById("min_spo2").innerText, "--");
     assert.equal(dashboard.context.document.getElementById("avg_temp").innerText, "--");
     assert.equal(dashboard.charts.length, 0);
     assert.equal(dashboard.consoleErrors.length, 1);
     assert.equal(dashboard.scheduledTimeouts.length, 1);
+});
+
+test("a failed refresh does not leave a prior low assessment visible", async () => {
+    let failRequest = false;
+    const dashboard = createDashboard({
+        fetchImpl: async () => {
+            if (failRequest) {
+                return {
+                    ok: false,
+                    status: 503,
+                    json: async () => ({ error: "unavailable" })
+                };
+            }
+            return {
+                ok: true,
+                status: 200,
+                json: async () => patientResponse("P002")
+            };
+        }
+    });
+    await dashboard.settle();
+    const selector = dashboard.context.document.getElementById("patientSelector");
+    selector.value = "P002";
+    selector.dispatch("change");
+    await dashboard.settle();
+    assert.equal(dashboard.elements.get("risk").innerText, "Low");
+
+    failRequest = true;
+    await vm.runInContext("updateDashboard()", dashboard.context);
+    await dashboard.settle();
+
+    assert.equal(dashboard.elements.get("risk").innerText, "Unavailable");
+    assert.equal(dashboard.elements.get("status").innerText, "Assessment Unavailable");
+    assert.equal(dashboard.elements.get("hr").innerText, "--");
 });
 
 test("invalid responses display an error instead of rendering missing values", async () => {
@@ -290,6 +351,46 @@ test("invalid responses display an error instead of rendering missing values", a
     assert.equal(dashboard.elements.get("dashboardError").hidden, false);
     assert.equal(dashboard.context.document.getElementById("hr").innerText, "--");
     assert.equal(dashboard.context.document.getElementById("avg_temp").innerText, "--");
+});
+
+test("unavailable assessment clears stale measurements and explains invalid data", async () => {
+    const dashboard = createDashboard({
+        response: {
+            ok: false,
+            status: 422,
+            json: async () => ({
+                error: "SpO2 must be between 0 and 100 percent.",
+                risk_assessment: {
+                    risk: "Unavailable",
+                    severity: "unknown",
+                    status: "Assessment Unavailable",
+                    method: "deterministic_demo_rules",
+                    factors: [{
+                        code: "data_quality",
+                        label: "SpO2 must be between 0 and 100 percent.",
+                        observed_value: null,
+                        threshold: null,
+                        unit: null,
+                        affects_risk: true
+                    }],
+                    next_step: "Check the measurements.",
+                    data_quality: { status: "incomplete_or_invalid" },
+                    threshold_source: "inherited_demo_configuration_not_clinical_guidance",
+                    clinically_validated: false
+                }
+            })
+        }
+    });
+    await dashboard.settle();
+
+    assert.equal(dashboard.elements.get("risk").innerText, "Unavailable");
+    assert.equal(dashboard.elements.get("status").innerText, "Assessment Unavailable");
+    assert.equal(dashboard.elements.get("hr").innerText, "--");
+    assert.equal(dashboard.elements.get("spo2").innerText, "--");
+    assert.equal(dashboard.elements.get("dashboardError").hidden, false);
+    assert.match(dashboard.elements.get("dashboardError").innerText, /SpO2 must be between/);
+    assert.equal(dashboard.elements.get("alertBanner").style.display, "none");
+    assert.deepEqual(Array.from(dashboard.charts[0].data.datasets[0].data), []);
 });
 
 test("overlapping refresh calls are ignored while a request is in flight", async () => {
@@ -391,4 +492,37 @@ test("stale patient response cannot overwrite a newly selected patient", async (
     await dashboard.settle();
     assert.equal(dashboard.elements.get("patient_id").innerText, "P002");
     assert.equal(dashboard.elements.get("hr").innerText, 85);
+});
+
+test("stale failed patient response cannot mark a newly selected patient unavailable", async () => {
+    let rejectP001;
+    const dashboard = createDashboard({
+        fetchImpl: url => {
+            const patientId = new URL(url, "http://localhost").searchParams.get("patient_id");
+            if (patientId === "P001") {
+                return new Promise((resolve, reject) => {
+                    rejectP001 = reject;
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: async () => patientResponse(patientId)
+            });
+        }
+    });
+    await dashboard.settle();
+
+    const selector = dashboard.context.document.getElementById("patientSelector");
+    selector.value = "P002";
+    selector.dispatch("change");
+    rejectP001(new Error("stale request failed"));
+    await dashboard.settle();
+
+    assert.equal(dashboard.elements.get("status").innerText, "--");
+    assert.equal(dashboard.elements.get("risk").innerText, "--");
+    dashboard.scheduledTimeouts.at(-1).callback();
+    await dashboard.settle();
+    assert.equal(dashboard.elements.get("patient_id").innerText, "P002");
+    assert.equal(dashboard.elements.get("risk").innerText, "Low");
 });

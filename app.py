@@ -14,7 +14,7 @@ from repository import (
     record_observation,
     seed_demo_patient,
 )
-from risk_logic import calculate_risk
+from risk_logic import RiskThresholds, assess_vitals
 
 
 REQUIRED_COLUMNS = ("time", "hr", "spo2", "temp")
@@ -57,22 +57,22 @@ def load_dataset(dataset_path):
     return dataset
 
 
-def calculate_health_score(row, risk):
+def calculate_health_score(row, risk, thresholds):
     score = 100
 
-    if row["hr"] > 120:
+    if row["hr"] > thresholds.score_heart_rate_high_above:
         score -= 25
-    elif row["hr"] > 100:
+    elif row["hr"] > thresholds.score_heart_rate_medium_above:
         score -= 10
 
-    if row["spo2"] < 90:
+    if row["spo2"] < thresholds.score_spo2_low_below:
         score -= 30
-    elif row["spo2"] < 95:
+    elif row["spo2"] < thresholds.score_spo2_medium_below:
         score -= 15
 
-    if row["temp"] > 101:
+    if row["temp"] > thresholds.score_temperature_high_above_f:
         score -= 15
-    elif row["temp"] > 99.5:
+    elif row["temp"] > thresholds.score_temperature_medium_above_f:
         score -= 8
 
     if risk == "Medium":
@@ -83,14 +83,6 @@ def calculate_health_score(row, risk):
     return max(score, 0)
 
 
-def get_patient_status(risk):
-    if risk == "Low":
-        return "Stable"
-    if risk == "Medium":
-        return "Under Observation"
-    return "Critical Condition"
-
-
 def generate_bp(risk):
     if risk == "Low":
         return "120/80"
@@ -99,8 +91,11 @@ def generate_bp(risk):
     return "165/105"
 
 
-def create_app(dataset_path=None, database_path=None):
+def create_app(dataset_path=None, database_path=None, risk_thresholds=None):
     app = Flask(__name__)
+    app.config["RISK_THRESHOLDS"] = RiskThresholds.from_mapping(
+        risk_thresholds
+    ).__dict__
     default_dataset_paths = {
         "P001": DATA_DIRECTORY / "critical.csv",
         "P002": DATA_DIRECTORY / "moderate.csv",
@@ -164,13 +159,20 @@ def create_app(dataset_path=None, database_path=None):
             patient_state["previous_row"] = None
 
         row = patient_dataset.iloc[patient_state["index"]]
-        risk, reasons = calculate_risk(row, patient_state["previous_row"])
+        thresholds = RiskThresholds.from_mapping(app.config["RISK_THRESHOLDS"])
+        risk_assessment = assess_vitals(
+            row,
+            patient_state["previous_row"],
+            thresholds,
+        )
+        if risk_assessment.risk == "Unavailable":
+            return jsonify({
+                "error": risk_assessment.next_step,
+                "risk_assessment": risk_assessment.to_dict(),
+            }), 422
 
-        recommendation = {
-            "Low": "Demo rules did not flag a threshold in this sample. This does not rule out illness.",
-            "Medium": "Demo rules detected a changing pattern. Review the measurements with a qualified clinician.",
-            "High": "Demo rules detected a concerning pattern. This is not a diagnosis; consult a qualified clinician.",
-        }
+        risk = risk_assessment.risk
+        reasons = risk_assessment.reasons
         measured_at = datetime.now(timezone.utc)
         observation = record_observation(
             resolved_database_path,
@@ -181,7 +183,7 @@ def create_app(dataset_path=None, database_path=None):
             temperature_value=row["temp"],
             temperature_unit="F",
             source="synthetic_csv",
-            assessment={"risk": risk, "reasons": reasons},
+            assessment=risk_assessment.to_dict(),
         )
         recent_observations = get_recent_observations(resolved_database_path, patient_id)
 
@@ -198,10 +200,11 @@ def create_app(dataset_path=None, database_path=None):
             "temperature_unit": observation["temperature_unit"],
             "bp": generate_bp(risk),
             "risk": risk,
-            "status": get_patient_status(risk),
-            "health_score": calculate_health_score(row, risk),
+            "status": risk_assessment.status,
+            "health_score": calculate_health_score(row, risk, thresholds),
             "reasons": reasons,
-            "recommendation": recommendation[risk],
+            "recommendation": risk_assessment.next_step,
+            "risk_assessment": risk_assessment.to_dict(),
             "medical_history": get_patient_history(resolved_database_path, patient_id),
             "observations": [
                 {

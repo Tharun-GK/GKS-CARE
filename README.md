@@ -1,6 +1,6 @@
 # GKS-CARE
 
-GKS-CARE is a Flask dashboard that demonstrates monitoring synthetic patient vital signs. Its risk levels are produced by fixed, explainable rules; it does not use a trained or clinically validated AI model.
+GKS-CARE is a Flask dashboard that demonstrates monitoring synthetic patient vital signs. Its risk levels are produced by configurable, explainable rules; it does not use a trained or clinically validated AI model.
 
 > **Demonstration only.** Do not use this application for clinical decisions or real patient care. Measurements, patient history, emergency-response details, vital indicators, and guidance are examples. The application does not contact a clinician, hospital, or emergency service.
 
@@ -8,7 +8,7 @@ GKS-CARE is a Flask dashboard that demonstrates monitoring synthetic patient vit
 
 - Live-style dashboard updates from a local synthetic CSV dataset.
 - Heart rate, SpO₂, temperature, and simulated blood-pressure display.
-- Rule-based risk levels with contributing reasons.
+- Configurable, explainable demonstration risk levels and explicit missing/invalid-data outcomes.
 - Recent trend charts, a vital indicator, and monitoring statistics.
 - Example medical history, emergency-response information, and a risk-change activity log.
 - Visible error state and automatic retry when the patient endpoint is unavailable.
@@ -59,9 +59,11 @@ node --check static/script.js
 - `GET /` serves the dashboard.
 - `GET /patients` lists the available synthetic patient identifiers and demo metadata.
 - `GET /patient` returns the next observation for the default `P001` patient, preserving the original single-patient request behavior.
-- `GET /patient?patient_id=P002` returns the next observation for the selected patient. Malformed identifiers return `400`, unknown patients return `404`, and a missing or invalid selected CSV returns `503`.
+- `GET /patient?patient_id=P002` returns the next observation for the selected patient. Malformed identifiers return `400`, unknown patients return `404`, missing/invalid datasets return `503`, and invalid vital ranges return `422` with a structured unavailable assessment.
 
-Each CSV must contain numeric `time`, `hr`, `spo2`, and `temp` columns. The bundled sample files are synthetic: `P001` uses `data/critical.csv`, `P002` uses `data/moderate.csv`, and `P003` uses `data/stable.csv`. Each patient has independent simulation progress, observations, history, and dashboard charts.
+Each CSV must contain numeric `time`, `hr`, `spo2`, and `temp` columns. A nonpositive heart rate or SpO₂ outside 0–100% returns an explicit `422` assessment-unavailable response and is not persisted as an observation. Missing columns or nonnumeric/non-finite CSV values keep the selected dataset unavailable with `503`. The bundled sample files are synthetic: `P001` uses `data/critical.csv`, `P002` uses `data/moderate.csv`, and `P003` uses `data/stable.csv`. Each patient has independent simulation progress, observations, history, and dashboard charts.
+
+The rule and vital-indicator demonstration thresholds are centralized in `RiskThresholds`. Embedding applications can override selected values when constructing the Flask app, for example `create_app(risk_thresholds={"spo2_high_below": 91})`; unknown, non-finite, and inconsistent threshold configurations are rejected at startup. The API includes a structured `risk_assessment` with the method, severity, factors, next step, data-quality state, and explicit disclosure that the values are not clinically validated. A `Low` result means only that these configured demonstration rules did not flag a threshold; it is not a reassurance that a person is well. The application does not check measurement freshness or population-specific context.
 
 ## Project structure
 
@@ -90,7 +92,7 @@ tests/
 
 ## Current limitations
 
-- Risk classification and the displayed vital indicator are simple demonstration logic, not diagnoses, validated predictions, or clinical scores.
+- Risk classification and the displayed vital indicator use deterministic demonstration logic, not diagnoses, validated predictions, or clinical scores. The inherited example rules use SpO₂ below 92% (high) or below 95% (medium), heart rate above 110 bpm (high) or above 95 bpm (medium), and a temperature note above 100°F. Temperature notes and sample-to-sample trends explain the sample but do not raise the risk level. The separate vital indicator also has its own demonstration scoring thresholds; it is not a clinical score. These example values have not been sourced from clinical guidance, validated for any population, or endorsed for care.
 - Blood pressure, patient details, medical history, and emergency-response information are illustrative values, not observations from verified records or live integrations.
 - The patient selector is a demo workflow, not an authentication or authorization boundary. All patient records remain synthetic.
 - SQLite is a single-user local demonstration store. There is no multi-user access, authentication, authorization, backup/retention workflow, or real-time emergency integration.
